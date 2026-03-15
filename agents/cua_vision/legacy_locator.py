@@ -134,15 +134,7 @@ def legacy_find_and_click_element(
             return False
 
         screenshot = _capture_active_window()
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         _dispatch_now(update_cursor_status(initial_status, source="cua_vision"))
-
-        config = types.GenerateContentConfig(
-            temperature=0.1,
-            top_p=0.95,
-            top_k=64,
-            max_output_tokens=30,
-        )
 
         model_prompt = f"""
 This image is a screenshot of {_get_active_window_title()} - an application that contains many interactive elements.
@@ -156,14 +148,17 @@ Return a bounding box for the {element_description}. Do NOT output any words:
 [ymin, xmin, ymax, xmax]
 """
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[screenshot, model_prompt],
-            config=config,
+        # [GROQ] Replace Gemini vision call with Groq
+        import asyncio as _asyncio, io as _io
+        from core.groq_provider import generate_vision
+        buf = _io.BytesIO()
+        screenshot.convert("RGB").save(buf, format="JPEG", quality=85)
+        raw_text = _asyncio.get_event_loop().run_until_complete(
+            generate_vision(prompt=model_prompt, image_bytes=buf.getvalue(), max_tokens=30)
         )
 
         _dispatch_now(update_cursor_status("Target located. Moving cursor...", source="cua_vision"))
-        temp_list = response.text.strip()
+        temp_list = raw_text.strip()
         temp_list = temp_list[1:-1]
         coords = [float(item) for item in temp_list.split(", ")]
 

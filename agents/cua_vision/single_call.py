@@ -6,10 +6,66 @@ action and user-visible status text in one response.
 """
 
 import asyncio
+import copy
+import io
 import json
 import os
 
-from google.api_core.exceptions import InternalServerError
+
+# ---------------------------------------------------------------------------
+# Fake Gemini-compatible response wrappers so _extract_function_calls works
+# with Groq tool-call output without changing the downstream parsing logic.
+# ---------------------------------------------------------------------------
+
+def _coerce_vision_arg(val):
+    """Coerce string values from Groq to proper Python types."""
+    if not isinstance(val, str):
+        return val
+    if val.lower() in ("true", "yes"):
+        return True
+    if val.lower() in ("false", "no"):
+        return False
+    try:
+        return int(val)
+    except ValueError:
+        pass
+    try:
+        return float(val)
+    except ValueError:
+        pass
+    return val
+
+
+class _FakeFC:
+    def __init__(self, name, args):
+        self.name = name
+        self.args = {k: _coerce_vision_arg(v) for k, v in (args or {}).items()}
+
+
+class _FakePart:
+    def __init__(self, fc):
+        self.function_call = fc
+
+
+class _FakeCandidate:
+    def __init__(self, parts):
+        self.content = type("C", (), {"parts": parts})()
+
+
+class _FakeGroqResponse:
+    def __init__(self, tool_calls):
+        parts = [_FakePart(_FakeFC(tc["name"], tc["args"])) for tc in tool_calls]
+        self.candidates = [_FakeCandidate(parts)]
+
+
+# Kept only as a sentinel so the except clause below doesn't NameError
+class _StubInternalServerError(Exception):
+    pass
+
+try:
+    from google.api_core.exceptions import InternalServerError
+except ImportError:
+    InternalServerError = _StubInternalServerError
 
 from integrations.audio import tts_speak
 from agents.cua_vision.prompts import VISION_AGENT_SYSTEM_PROMPT
@@ -44,6 +100,7 @@ CLICK_TYPE_TO_TOOL = {
     "right click": "click_right_click",
 }
 POSITIONING_TOOLS = {"go_to_element", "crop_and_search"}
+HOTKEY_TOOLS = {"press_ctrl_hotkey", "press_alt_hotkey"}
 AUTO_CLICK_AFTER_REPEAT_POSITIONING_THRESHOLD = 2
 POSITION_BUCKET_SIZE = 40
 CLICK_CYCLE_LOOP_STOP_THRESHOLD = 4
@@ -132,25 +189,60 @@ class SingleCallVisionEngine:
         self._thinking_index += 1
         await self._set_status(thinking_text)
 
-        model_task = asyncio.create_task(
-            self.agent.client.aio.models.generate_content(
-                model=self.agent.model_name,
-                contents=[model_prompt, screenshot],
-                config=self.agent.analysis_config,
-            )
+        # [GROQ] Use Groq vision + function calling instead of Gemini
+        from core.groq_provider import generate_vision_with_tools
+        from agents.cua_vision.tools import (
+            type_string_declaration, press_ctrl_hotkey_declaration,
+            press_alt_hotkey_declaration, go_to_element_declaration,
+            click_left_click_declaration, click_double_left_click_declaration,
+            click_right_click_declaration, crop_and_search_declaration,
+            hold_down_left_click_declaration, release_left_click_declaration,
+            press_key_for_duration_declaration, hold_down_key_declaration,
+            release_held_key_declaration, remember_information_declaration,
+            tts_speak_declaration, task_is_complete_declaration,
         )
+
+        buf = io.BytesIO()
+        screenshot.convert("RGB").save(buf, format="JPEG", quality=75)
+        image_bytes = buf.getvalue()
+
+        def _permissive_props(props):
+            out = {}
+            for k, v in props.items():
+                p = copy.deepcopy(v)
+                if p.get("type") in ("boolean", "number", "integer", "string"):
+                    p.pop("type", None)
+                out[k] = p
+            return out
+
+        groq_tools = []
+        for decl in [
+            type_string_declaration, press_ctrl_hotkey_declaration,
+            press_alt_hotkey_declaration, go_to_element_declaration,
+            click_left_click_declaration, click_double_left_click_declaration,
+            click_right_click_declaration, crop_and_search_declaration,
+            hold_down_left_click_declaration, release_left_click_declaration,
+            press_key_for_duration_declaration, hold_down_key_declaration,
+            release_held_key_declaration, remember_information_declaration,
+            tts_speak_declaration, task_is_complete_declaration,
+        ]:
+            d = copy.deepcopy(decl)
+            if "parameters" in d and "properties" in d["parameters"]:
+                d["parameters"]["properties"] = _permissive_props(d["parameters"]["properties"])
+            groq_tools.append({"type": "function", "function": d})
+
         try:
-            while True:
-                self._raise_if_stopped()
-                done, _ = await asyncio.wait({model_task}, timeout=0.15)
-                if done:
-                    response = model_task.result()
-                    self.agent.retries = 0
-                    return response
+            tool_calls = await generate_vision_with_tools(
+                system=model_prompt,
+                user_text=task,
+                image_bytes=image_bytes,
+                tools=groq_tools,
+            )
+            self.agent.retries = 0
+            return _FakeGroqResponse(tool_calls)
         except asyncio.CancelledError:
-            model_task.cancel()
             raise
-        except InternalServerError as e:
+        except Exception as e:
             self.agent.retries += 1
             if self.agent.retries < self.agent.max_retries:
                 await self._set_status(
@@ -159,7 +251,7 @@ class SingleCallVisionEngine:
                 await asyncio.sleep(1)
                 self._raise_if_stopped()
                 return await self._generate_step_response(task)
-            raise e
+            raise
 
     def _build_model_prompt(self, task: str, active_window: str, memory_text):
         memory_json = json.dumps(memory_text)
@@ -269,6 +361,15 @@ IMPORTANT:
                     )
                 return function_calls[:2]
 
+            # Allow hotkey + type_string (e.g. Cmd+Space then type app name into Spotlight)
+            if first.name in HOTKEY_TOOLS and second.name == "type_string":
+                if len(function_calls) > 2:
+                    print(
+                        "[VisionAgent] Received more than 2 function calls; "
+                        "dropping extras after hotkey+type."
+                    )
+                return function_calls[:2]
+
         print(
             "[VisionAgent] Multi-call sequence is unsupported; "
             "executing only the first call."
@@ -317,6 +418,22 @@ IMPORTANT:
                 self.consecutive_failures = 0
                 self.repeated_action_count = 0
                 return False
+
+        # Non-click/non-positioning actions (hotkeys, type_string) that repeat
+        # too many times mean the task is likely already done or stuck.
+        if (
+            not click_type
+            and name not in POSITIONING_TOOLS
+            and name not in {"tts_speak", "task_is_complete"}
+            and self.repeated_action_count >= self.max_failures_before_fallback
+        ):
+            await self._set_status("Task appears complete.")
+            print(
+                f"[VisionAgent] Non-click action '{name}' repeated "
+                f"{self.repeated_action_count}x — assuming task complete."
+            )
+            await self._hide_statuses(delay_ms=700)
+            return True  # stop the loop
 
         if (
             allow_positioning_autoclick
@@ -369,6 +486,11 @@ IMPORTANT:
                     "type_of_click": click_type,
                     "target_description": resolved_target,
                 }
+
+            # Extra settle time after submit=True so launched apps have time to open
+            if name == "type_string" and args.get("submit"):
+                self._raise_if_stopped()
+                await asyncio.sleep(2.0)
 
             if name in {"tts_speak", "task_is_complete"}:
                 await self._set_status("Task complete")

@@ -326,6 +326,38 @@ def _finalize_direct_response_text(
 # STATUS + CONFIRMATION HELPERS
 # ================================================================================
 
+def _coerce_tool_args(name: str, args: dict, declarations: list[dict]) -> dict:
+    """Coerce string values returned by Groq to the proper Python types per the tool schema.
+    Also strips None values for optional (non-required) fields — Groq sometimes sends null
+    for optional params, which fails schema validation."""
+    decl = next((d for d in declarations if d.get("name") == name), None)
+    if not decl:
+        return args
+    schema_props = decl.get("parameters", {}).get("properties", {})
+    required_fields = set(decl.get("parameters", {}).get("required", []))
+    coerced = {}
+    for k, v in args.items():
+        # Drop null values for optional fields
+        if v is None and k not in required_fields:
+            continue
+        prop_type = schema_props.get(k, {}).get("type")
+        if isinstance(v, str) and prop_type:
+            if prop_type == "integer":
+                try:
+                    v = int(float(v))
+                except (ValueError, TypeError):
+                    pass
+            elif prop_type == "number":
+                try:
+                    v = float(v)
+                except (ValueError, TypeError):
+                    pass
+            elif prop_type == "boolean":
+                v = v.strip().lower() in ("true", "1", "yes")
+        coerced[k] = v
+    return coerced
+
+
 def _clean_text(value: Any, fallback: str, max_len: int = 1400) -> str:
     if value is None:
         return fallback
@@ -713,6 +745,10 @@ async def call_gemini(user_prompt: str, rapid_response_model: str, screen_model:
             _append_rapid_history("assistant", failure_msg, "rapid")
             return
 
+        # Screen annotation is a one-shot action — stop chaining after success
+        if step_result.get("agent") == "ghostops":
+            return
+
     max_step_msg = (
         f"I stopped after {_MAX_ROUTER_CHAIN_STEPS} delegated steps to avoid loops. "
         "If you want me to continue, ask for the next specific step."
@@ -774,24 +810,54 @@ class GeminiModel:
 
     async def route_request(self, prompt: str) -> dict:
         """
-        Use the router model to decide how to handle the request.
-
-        Returns:
-            dict with keys:
-                - agent: "direct" | "ghostops" | "browser" | "cua_cli" | "cua_vision" | "screen_context"
-                - query/task: The query or task to pass to the agent
-                - response_text: direct response text when agent == "direct"
-                - Additional agent-specific params
+        Route request using Groq (temporary swap — Gemini commented out).
+        Returns same dict shape as Gemini version.
         """
-        print("[Router] Processing...")
+        print("[Router] Processing via Groq...")
         await set_model_name(self.rapid_response_model)
 
+        # [GEMINI] response = await self.client.aio.models.generate_content(
+        # [GEMINI]     model=self.rapid_response_model, contents=[prompt], config=self.router_config)
+        # [GROQ]
         try:
-            response = await self.client.aio.models.generate_content(
-                model=self.rapid_response_model,
-                contents=[prompt],
-                config=self.router_config
+            from core.groq_provider import generate_text
+            _ROUTER_SYSTEM = (
+                "You are a desktop assistant router. Given a user request, choose the best agent.\n"
+                "Return ONLY a JSON object — no markdown, no explanation:\n"
+                '{"agent": "<agent>", "task": "<task for agent>", "response_text": "<only if agent=direct>"}\n\n'
+                "Agent choices:\n"
+                "- ghostops  : explain or annotate what is visible on screen, visual questions about the screen\n"
+                "- cua_cli   : shell commands, open apps, system info, file ops, run scripts\n"
+                "- cua_vision: click elements, type in GUI fields, drag, scroll, visual interactions\n"
+                "- direct    : answer a question, greet, explain something (no computer action needed)\n"
             )
+            raw = await generate_text(
+                system=_ROUTER_SYSTEM,
+                user=prompt,
+                temperature=0.1,
+                max_tokens=200,
+            )
+            raw = raw.strip().strip("`")
+            if raw.startswith("json"):
+                raw = raw[4:].strip()
+            result = json.loads(raw)
+            if "agent" not in result:
+                result = {"agent": "direct", "response_text": raw}
+            # Normalize invoke_* names → plain names the downstream code expects
+            _agent_map = {
+                "invoke_cua_cli": "cua_cli",
+                "invoke_cua_vision": "cua_vision",
+                "invoke_browser": "browser",
+                "invoke_ghostops": "ghostops",
+                "invoke_screen_annotator": "ghostops",
+                "ghostops": "ghostops",
+                "direct_response": "direct",
+            }
+            result["agent"] = _agent_map.get(result["agent"], result["agent"])
+            # Ensure task field exists for agent routes
+            if result.get("agent") != "direct" and "task" not in result:
+                result["task"] = prompt
+            return result
         except Exception as exc:
             return {
                 "agent": "direct",
@@ -882,8 +948,12 @@ class GeminiModel:
     ) -> dict[str, Any]:
         """
         Run one multimodal pass to extract concrete screen context for routing.
+        Uses Groq vision to avoid Gemini quota exhaustion.
         """
-        print("[ScreenJudge] Capturing context from screenshot...")
+        import io
+        from core.groq_provider import generate_vision
+
+        print("[ScreenJudge] Capturing context from screenshot via Groq...")
         focus_text = _clean_text(focus, "", max_len=200)
         judge_prompt = (
             "You are Screen Judge for a computer-use orchestrator.\n"
@@ -903,73 +973,111 @@ class GeminiModel:
             "Do not invent URLs. If uncertain, leave fields empty."
         )
 
-        contents = [judge_prompt]
+        image_bytes = b""
         if image is not None:
-            contents.append(image)
+            buf = io.BytesIO()
+            image.convert("RGB").save(buf, format="JPEG", quality=85)
+            image_bytes = buf.getvalue()
 
-        response = await self.client.aio.models.generate_content(
-            model=self.screen_judge_model,
-            contents=contents,
-            config=self.screen_judge_config,
-        )
-
-        raw_text = ""
-        if hasattr(response, "text") and response.text:
-            raw_text = str(response.text)
-        else:
-            try:
-                raw_text = json.dumps(response.to_dict())
-            except Exception:
-                raw_text = ""
-
+        raw_text = await generate_vision(prompt=judge_prompt, image_bytes=image_bytes)
         parsed = _parse_json_object_from_text(raw_text)
         normalized = _normalize_screen_context_payload(parsed, user_request=user_request)
         if not normalized.get("summary"):
             normalized["summary"] = _clean_text(raw_text, "Screen context captured.", max_len=420)
-        normalized["model"] = self.screen_judge_model
+        normalized["model"] = "groq/llama-4-scout"
         return normalized
 
     async def generate_screen_response(self, prompt: str, image: Image = None) -> dict[str, Any]:
         """
-        Call the GhostOps model with full screen annotation capabilities.
+        Call the GhostOps screen annotator via Groq vision + function calling.
+        Avoids Gemini quota by routing through Groq llama-4-scout.
         """
-        print("[GhostOps] Processing with screenshot...")
-        await set_model_name(self.screen_model)
-
-        contents = [prompt]
-        if image:
-            contents.append(image)
-
-        response = await self.client.aio.models.generate_content(
-            model=self.screen_model,
-            contents=contents,
-            config=self.screen_config
+        import io
+        from core.groq_provider import generate_vision_with_tools
+        from agents.screen.tools import (
+            draw_bounding_box_declaration,
+            draw_point_declaration,
+            create_text_declaration,
+            direct_response_declaration as screen_dr_decl,
+            create_text_for_box_declaration,
+            clear_screen_declaration,
+            destroy_box_declaration,
+            destroy_text_declaration,
         )
 
-        parts = response.candidates[0].content.parts
-        function_calls = [part.function_call for part in parts if part.function_call]
+        print("[GhostOps] Processing with Groq vision + tools...")
+        await set_model_name("groq/llama-4-scout")
+
+        # Split combined prompt into system + user parts
+        system_part = prompt
+        user_part = "Annotate what you see on screen."
+        if "# User's Request:\n" in prompt:
+            idx = prompt.index("# User's Request:\n")
+            system_part = prompt[:idx].strip()
+            user_part = prompt[idx + len("# User's Request:\n"):].strip() or user_part
+
+        # Convert PIL image to JPEG bytes
+        image_bytes = b""
+        if image:
+            buf = io.BytesIO()
+            image.convert("RGB").save(buf, format="JPEG", quality=85)
+            image_bytes = buf.getvalue()
+
+        # Build Groq-format tool list — strip strict type constraints from
+        # boolean/number/integer fields so Groq doesn't server-side reject the
+        # LLM's own output when it generates "false" instead of false, etc.
+        # Python-side _coerce_tool_args still handles type conversion.
+        import copy
+
+        def _permissive_props(props: dict) -> dict:
+            out = {}
+            for k, v in props.items():
+                p = copy.deepcopy(v)
+                if p.get("type") in ("boolean", "number", "integer", "string"):
+                    p.pop("type", None)
+                out[k] = p
+            return out
+
+        groq_tools = []
+        for decl in [
+            draw_bounding_box_declaration,
+            draw_point_declaration,
+            create_text_declaration,
+            screen_dr_decl,
+            create_text_for_box_declaration,
+            clear_screen_declaration,
+            destroy_box_declaration,
+            destroy_text_declaration,
+        ]:
+            d = copy.deepcopy(decl)
+            if "parameters" in d and "properties" in d["parameters"]:
+                d["parameters"]["properties"] = _permissive_props(d["parameters"]["properties"])
+            groq_tools.append({"type": "function", "function": d})
+
+        tool_calls = await generate_vision_with_tools(
+            system=system_part,
+            user_text=user_part,
+            image_bytes=image_bytes,
+            tools=groq_tools,
+        )
+
+        raw_declarations = [t["function"] for t in groq_tools]
         summary_text = None
-
-        if function_calls:
-            for function_call in function_calls:
-                print(f"\n[GhostOps] Function: {function_call.name}")
-                print(f"[GhostOps] Arguments: {function_call.args}")
-
-                if function_call.name == "direct_response":
-                    summary_text = function_call.args.get("text") or summary_text
-
-                tool = SCREEN_TOOL_MAP.get(function_call.name)
-                if tool:
-                    tool(**function_call.args)
-                else:
-                    raise Exception(f"[GhostOps] Invalid tool: {function_call.name}")
-        else:
-            print("[GhostOps] No function call in response")
-            if response.text:
-                print(response.text)
-                summary_text = response.text
+        for tc in tool_calls:
+            name = tc["name"]
+            # Strip null values — Groq sometimes emits null for optional fields
+            tc["args"] = {k: v for k, v in (tc.get("args") or {}).items() if v is not None}
+            args = _coerce_tool_args(name, tc["args"], raw_declarations)
+            print(f"\n[GhostOps] Tool: {name}, Args: {args}")
+            if name == "direct_response":
+                summary_text = args.get("text") or summary_text
+            tool = SCREEN_TOOL_MAP.get(name)
+            if tool:
+                tool(**args)
+            else:
+                raise Exception(f"[GhostOps] Invalid tool: {name}")
 
         return {
-            "response": response,
+            "response": None,
             "summary": _clean_text(summary_text, "", max_len=420),
         }

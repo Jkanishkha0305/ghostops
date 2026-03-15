@@ -39,14 +39,8 @@ load_dotenv()
 
 
 def _minimal_thinking_config():
-    """Return a minimal-thinking config across supported SDK variants."""
-    try:
-        return types.ThinkingConfig(
-            thinking_level=types.ThinkingLevel.MINIMAL,
-        )
-    except Exception:
-        # Fallback for older variants that may not expose thinking_level.
-        return types.ThinkingConfig(thinking_budget=0)
+    """Return a minimal-thinking config (thinking_budget=0 disables thinking)."""
+    return types.ThinkingConfig(thinking_budget=0)
 
 
 class VisionAgent:
@@ -62,7 +56,7 @@ class VisionAgent:
     - Continuous screen watching
     """
 
-    def __init__(self, model_name: str = "gemini-2.0-flash"):
+    def __init__(self, model_name: str = "gemini-2.5-flash"):
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         self.model_name = model_name
         self.max_retries = 3
@@ -174,24 +168,25 @@ class VisionAgent:
         Now respond to this prompt: {prompt}
         """
 
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name,
-            contents=[prompt, screenshot, model_prompt],
-            config=self.analysis_config
+        # [GEMINI] response = await self.client.aio.models.generate_content(
+        # [GEMINI]     model=self.model_name, contents=[prompt, screenshot, model_prompt], config=self.analysis_config)
+        # [GROQ]
+        from core.groq_provider import generate_vision
+        import io
+        screenshot_bytes = io.BytesIO()
+        screenshot.save(screenshot_bytes, format="JPEG")
+        result_text = await generate_vision(
+            prompt=f"{prompt}\n\n{model_prompt}",
+            image_bytes=screenshot_bytes.getvalue(),
         )
-
-        # Process function calls
-        parts = response.candidates[0].content.parts
-        function_calls = [part.function_call for part in parts if part.function_call]
-
-        for function_call in function_calls:
-            print(f'[VisionAgent] Function: {function_call.name}')
+        # Groq returns plain text — call tts_speak if there's a response
+        if result_text:
+            print(f'[VisionAgent] Function: tts_speak')
             try:
-                execute_tool_call(function_call.name, function_call.args)
+                execute_tool_call("tts_speak", {"text": result_text})
             except ValueError:
-                print(f'[VisionAgent] Unknown function: {function_call.name}')
-
-        return response.text if hasattr(response, 'text') else ""
+                pass
+        return result_text
 
     async def watch_screen_and_respond(self, prompt: str):
         """
@@ -227,14 +222,17 @@ class VisionAgent:
                     Analyze ALL text on screen. Translate if not in English.
                     """
 
-                    response = await self.client.aio.models.generate_content(
-                        model=self.model_name,
-                        contents=[screenshot, watch_prompt],
-                        config=config
+                    # [GROQ] Replace Gemini vision call with Groq
+                    import io as _io
+                    from core.groq_provider import generate_vision
+                    buf = _io.BytesIO()
+                    screenshot.convert("RGB").save(buf, format="JPEG", quality=75)
+                    result_text = await generate_vision(
+                        prompt=watch_prompt, image_bytes=buf.getvalue()
                     )
 
-                    if response.text:
-                        tts_speak(response.text)
+                    if result_text:
+                        tts_speak(result_text)
 
             except Exception as e:
                 print(f'[VisionAgent] Watch error: {e}')

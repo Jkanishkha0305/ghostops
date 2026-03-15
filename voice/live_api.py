@@ -279,18 +279,14 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, session_id: str) -> str
         try:
             raw = await asyncio.to_thread(_screen._capture_raw)
             _screen.cached_screenshot_raw = raw
-            client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-            resp = await client.aio.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=types.Content(
-                    role="user",
-                    parts=[
-                        types.Part(text="Describe what's on this screen in 2-3 sentences."),
-                        types.Part(inline_data=types.Blob(data=raw, mime_type="image/jpeg")),
-                    ],
-                ),
+            # [GEMINI] client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+            # [GEMINI] resp = await client.aio.models.generate_content(model="gemini-2.5-flash", ...)
+            # [GROQ]
+            from core.groq_provider import generate_vision
+            return await generate_vision(
+                prompt="Describe what's on this screen in 2-3 sentences.",
+                image_bytes=raw,
             )
-            return resp.text or "Could not describe screen."
         except Exception as exc:
             return f"Screen capture failed: {exc}"
 
@@ -387,11 +383,9 @@ async def run() -> None:
     session_id = os.environ.get("FIRESTORE_SESSION_ID", str(uuid.uuid4()))
     print(f"[ghostops] session_id={session_id}")
 
-    memory_context = ""
-    if os.environ.get("CLOUD_RUN_URL"):
-        memory_turns = await load_memory(session_id=session_id, limit=10)
-        memory_context = turns_to_context(memory_turns)
-        print(f"[ghostops] loaded {len(memory_turns)} memory turns")
+    memory_turns = await load_memory(session_id=session_id, limit=10)
+    memory_context = turns_to_context(memory_turns)
+    print(f"[ghostops] loaded {len(memory_turns)} memory turns")
 
     system_prompt = build_system_prompt(memory_context)
     config = types.LiveConnectConfig(
@@ -427,8 +421,13 @@ async def run() -> None:
         threading.Thread(target=_mic_reader_thread, args=(mic_stream, loop), daemon=True).start()
         threading.Thread(target=_speaker_writer_thread, args=(speaker_stream, loop), daemon=True).start()
 
+        greeting_msg = (
+            "Session started. Greet me warmly and mention what I was last working on from memory."
+            if memory_context else
+            "Session started. Greet me briefly."
+        )
         await session.send_client_content(
-            turns=types.Content(role="user", parts=[types.Part(text="Session started. Greet me briefly.")])
+            turns=types.Content(role="user", parts=[types.Part(text=greeting_msg)])
         )
 
         try:

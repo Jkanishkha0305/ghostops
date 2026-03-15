@@ -9,6 +9,6 @@ Wraps the gemini-cli (TypeScript/Node.js) to provide:
 
 The rapid response model invokes this agent for CLI tasks.
 """
-from agents.cua_cli.agent import CLIAgent, CLIResponse, run_cli_task
+from agents.cua_cli.agent import CLIAgent
 
-__all__ = ["CLIAgent", "CLIResponse", "run_cli_task"]
+__all__ = ["CLIAgent"]

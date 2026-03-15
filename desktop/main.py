@@ -349,7 +349,7 @@ async def receive_loop(
                             # Use local Gemini call instead of Cloud Run /vision
                             vision_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
                             vision_resp = await vision_client.aio.models.generate_content(
-                                model="gemini-2.0-flash",
+                                model="gemini-2.5-flash",
                                 contents=types.Content(
                                     role="user",
                                     parts=[

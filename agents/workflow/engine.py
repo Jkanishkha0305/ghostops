@@ -26,9 +26,11 @@ import os
 import time
 from typing import Any
 
-from google import genai
-from google.genai import types
+# [GEMINI] from google import genai
+# [GEMINI] from google.genai import types
 from dotenv import load_dotenv
+# [GROQ]
+from core.groq_provider import generate_vision
 
 from desktop import screen as _screen
 
@@ -51,6 +53,7 @@ def start_recording() -> None:
     _record_frames = []
     _pending_transcription = ""
     print("[workflow] recording started")
+    _ensure_record_loop()
 
 
 def on_transcription(text: str) -> None:
@@ -106,6 +109,9 @@ async def stop_and_save(name: str, session_id: str) -> list[dict]:
         _record_task.cancel()
     
     frames = list(_record_frames)
+    # Flush any pending transcription into the last frame
+    if _pending_transcription.strip() and frames:
+        frames[-1]["transcription"] = (frames[-1]["transcription"] + " " + _pending_transcription).strip()
     print(f"[workflow] stopped. {len(frames)} frames captured")
 
     if not frames:
@@ -119,44 +125,32 @@ async def stop_and_save(name: str, session_id: str) -> list[dict]:
 
 
 async def _extract_steps(frames: list[dict]) -> list[dict]:
-    """Send frames + transcription to Gemini 2.5 Flash for step extraction."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    
+    """Send frames + transcription to Groq vision for step extraction."""
     # Build transcription timeline
     narration = " ".join(f["transcription"] for f in frames if f.get("transcription")).strip()
-    
-    # Build content parts: alternating text + images
-    parts = [
-        types.Part(text=(
-            "The user performed a workflow. Here are screenshots taken every 2 seconds "
-            f"({len(frames)} frames total).\n\n"
-            f"User narration: {narration or '(no narration)'}\n\n"
-            "Extract the workflow as a JSON array of steps. Each step:\n"
-            '{"step_number": 1, "action": "click|type|open|press|navigate", '
-            '"target_description": "describe what to click/interact with", '
-            '"value_if_any": "text to type or key to press, or empty string"}\n\n'
-            "Return ONLY the JSON array, no markdown, no explanation."
-        ))
-    ]
-    
-    # Add up to 10 frames (to stay within token limits)
-    sample_frames = frames[::max(1, len(frames) // 10)][:10]
-    for frame in sample_frames:
-        parts.append(types.Part(
-            inline_data=types.Blob(data=frame["raw_jpeg"], mime_type="image/jpeg")
-        ))
 
+    prompt = (
+        "The user performed a workflow. Here are screenshots taken every 2 seconds "
+        f"({len(frames)} frames total).\n\n"
+        f"User narration: {narration or '(no narration)'}\n\n"
+        "Extract the workflow as a JSON array of steps. Each step:\n"
+        '{"step_number": 1, "action": "click|type|open|press|navigate", '
+        '"target_description": "describe what to click/interact with", '
+        '"value_if_any": "text to type or key to press, or empty string"}\n\n'
+        "Return ONLY the JSON array, no markdown, no explanation."
+    )
+
+    # [GEMINI] client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    # [GEMINI] parts = [types.Part(text=prompt)]
+    # [GEMINI] sample_frames = frames[::max(1, len(frames) // 10)][:10]
+    # [GEMINI] for frame in sample_frames:
+    # [GEMINI]     parts.append(types.Part(inline_data=types.Blob(data=frame["raw_jpeg"], mime_type="image/jpeg")))
+    # [GEMINI] response = await client.aio.models.generate_content(model="gemini-2.5-flash", ...)
+
+    # [GROQ] Use only the last frame as the reference screenshot for step extraction
+    last_frame = frames[-1]["raw_jpeg"]
     try:
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=types.Content(role="user", parts=parts),
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=4096,
-            ),
-        )
-        raw = response.text or "[]"
-        # Strip markdown if present
+        raw = await generate_vision(prompt=prompt, image_bytes=last_frame, max_tokens=4096)
         raw = raw.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
@@ -215,7 +209,7 @@ async def replay(name: str, session_id: str) -> str:
         return f"Workflow '{name}' not found or has no steps."
 
     print(f"[workflow] replaying '{name}': {len(steps)} steps")
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    # [GEMINI] client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     completed = 0
 
     for step in steps:
@@ -223,7 +217,7 @@ async def replay(name: str, session_id: str) -> str:
         action = step.get("action", "")
         target = step.get("target_description", "")
         value = step.get("value_if_any", "")
-        
+
         print(f"[workflow] step {step_num}: {action} on '{target}'")
 
         try:
@@ -232,20 +226,18 @@ async def replay(name: str, session_id: str) -> str:
 
             # 2. Find element coordinates (for click/type actions)
             if action in ("click", "type") and target:
-                coord_parts = [
-                    types.Part(text=(
-                        f"Find the element described as '{target}' in this screenshot.\n"
-                        "Return ONLY a JSON object: {\"x\": <int>, \"y\": <int>} "
-                        "in 1280x720 coordinate space. No markdown, no explanation."
-                    )),
-                    types.Part(inline_data=types.Blob(data=raw, mime_type="image/jpeg")),
-                ]
-                coord_resp = await client.aio.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=types.Content(role="user", parts=coord_parts),
-                    config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=100),
+                # [GEMINI] coord_parts = [types.Part(text=...), types.Part(inline_data=...)]
+                # [GEMINI] coord_resp = await client.aio.models.generate_content(...)
+                # [GROQ]
+                coord_prompt = (
+                    f"Find the element described as '{target}' in this screenshot.\n"
+                    "Return ONLY a JSON object: {\"x\": <int>, \"y\": <int>} "
+                    "in 1280x720 coordinate space. No markdown, no explanation."
                 )
-                coord_json = (coord_resp.text or "{}").strip()
+                coord_json = await generate_vision(
+                    prompt=coord_prompt, image_bytes=raw, max_tokens=100
+                )
+                coord_json = coord_json.strip()
                 if coord_json.startswith("```"):
                     coord_json = coord_json.split("```")[1].lstrip("json")
                 coords = json.loads(coord_json)

@@ -14,7 +14,7 @@ from google.genai import types
 
 _client: genai.Client | None = None
 
-VISION_MODEL = "gemini-2.0-flash-001"
+VISION_MODEL = "gemini-2.5-flash"
 
 VISION_PROMPT = (
     "Describe what is currently visible on this screen in 2-3 short sentences. "

@@ -23,6 +23,7 @@ numpy>=1.24.0
 
 # Browser (optional, CLOVIS has it)
 browser-use
+langchain-groq
 playwright
 
 # Audio (CLOVIS TTS - optional)

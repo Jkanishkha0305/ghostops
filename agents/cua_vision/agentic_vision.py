@@ -266,21 +266,17 @@ Rules:
 """
 
     _check_stop(should_stop)
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    response = client.models.generate_content(
-        model=model_name or DEFAULT_LOCATOR_MODEL,
-        contents=[cropped, prompt],
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            top_p=0.95,
-            top_k=64,
-            max_output_tokens=64,
-            thinking_config=_minimal_thinking_config(),
-        ),
+    # [GROQ] Replace Gemini vision call with Groq
+    import asyncio, io as _io
+    from core.groq_provider import generate_vision
+    buf = _io.BytesIO()
+    cropped.convert("RGB").save(buf, format="JPEG", quality=85)
+    raw_text = asyncio.get_event_loop().run_until_complete(
+        generate_vision(prompt=prompt, image_bytes=buf.getvalue(), max_tokens=64)
     )
 
     _check_stop(should_stop)
-    local_ymin, local_xmin, local_ymax, local_xmax = _parse_bbox(response.text)
+    local_ymin, local_xmin, local_ymax, local_xmax = _parse_bbox(raw_text)
 
     local_top = _to_pixels(local_ymin, crop_h)
     local_left = _to_pixels(local_xmin, crop_w)

@@ -230,12 +230,14 @@ class BrowserAgent:
     async def _execute_with_browser_use(self, task: str, close_when_done: bool) -> dict[str, Any]:
         _ensure_browser_use_on_path()
         from browser_use import Agent
-        from browser_use.llm.google.chat import ChatGoogle
+        from langchain_groq import ChatGroq
 
         session = await self._get_or_create_browser_use_session()
         self._session = session
 
-        llm = ChatGoogle(model=self.model_name, api_key=os.getenv("GEMINI_API_KEY"))
+        llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
+        llm.provider = "groq"        # browser-use expects this attribute
+        llm.model = llm.model_name   # browser-use calls llm.model.lower()
         available_file_paths = self._extract_available_file_paths_from_task(task)
         if available_file_paths:
             print(f"[Browser Agent] available_file_paths: {available_file_paths}")
