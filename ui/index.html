@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Overlay</title>
+  <title>GhostOps</title>
   <link rel="stylesheet" href="animations/command_overlay.css">
   <link rel="stylesheet" href="animations/screen_glow.css">
   <link rel="stylesheet" href="animations/overlay_box.css">
@@ -25,6 +25,12 @@
       height: 100%;
       pointer-events: auto;
     }
+    #ghost-icon {
+      font-size: 42px;
+      line-height: 1;
+      display: block;
+      filter: drop-shadow(0 0 8px rgba(0, 220, 190, 0.7));
+    }
   </style>
 </head>
 <body>
@@ -34,12 +40,12 @@
   <div id="command-overlay" aria-hidden="true">
     <div id="command-logo">
       <div id="command-logo-spin">
-        <img src="assets/gemini_icon.png" alt="">
+        <span id="ghost-icon">👻</span>
       </div>
     </div>
     <div id="command-bar">
       <div class="command-input-wrap">
-        <textarea id="command-input" rows="1" placeholder="Gemini here! How can i help?" autocomplete="off"></textarea>
+        <textarea id="command-input" rows="1" placeholder="GhostOps — what do you need?" autocomplete="off"></textarea>
         <button id="command-send" type="button" aria-label="Send">
           <span class="command-send-icon">&#8594;</span>
         </button>

@@ -96,9 +96,9 @@
   gap: 12px;
   padding: 5px 16px;
   border-radius: 999px;
-  background: rgba(92, 92, 92, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.45);
+  background: rgba(10, 18, 35, 0.97);
+  border: 1px solid rgba(0, 200, 180, 0.45);
+  box-shadow: 0 0 16px rgba(0, 200, 180, 0.3), 0 0 40px rgba(0, 120, 255, 0.15);
   opacity: 0;
   transform: translate3d(0, -50%, 0) scaleX(0.85) scaleY(0.95);
   transform-origin: left center;
@@ -126,11 +126,11 @@
 }
 
 #command-input::placeholder {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(0, 220, 200, 0.7);
 }
 
 #command-send {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 200, 180, 0.25);
   border: none;
   color: #ffffff;
   width: 34px;
@@ -142,11 +142,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 200, 180, 0.4);
 }
 
 #command-send:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(0, 200, 180, 0.4);
 }
 
 .command-send-icon {
