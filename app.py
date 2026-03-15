@@ -105,9 +105,38 @@ async def main():
     await server.wait_forever()
 
 
+async def main_with_voice():
+    """
+    Full GhostOps entry point:
+    1. Start the Electron overlay (CLOVIS routing + screen annotation)
+    2. Start the voice module (Gemini Live API)
+    Both run concurrently.
+    """
+    # Start voice module in background thread (has its own asyncio.run)
+    import threading
+
+    def _voice_thread():
+        from voice.live_api import run as voice_run
+        asyncio.run(voice_run())
+
+    voice_t = threading.Thread(target=_voice_thread, daemon=True)
+    voice_t.start()
+    print("[ghostops] voice module started in background thread")
+
+    # Start overlay (blocks until overlay closes)
+    await main()
+
+
 if __name__ == '__main__':
+    import sys
+    mode = sys.argv[1] if len(sys.argv) > 1 else "overlay"
     try:
-        asyncio.run(main())
+        if mode == "voice":
+            from voice.live_api import main as voice_main
+            voice_main()
+        elif mode == "full":
+            asyncio.run(main_with_voice())
+        else:
+            asyncio.run(main())
     finally:
-        # _clear_screen()
         pass

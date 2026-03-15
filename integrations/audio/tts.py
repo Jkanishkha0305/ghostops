@@ -32,7 +32,7 @@ _audio_player = None
 try:
     import vlc
     VLC_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     VLC_AVAILABLE = False
     print("[TTS] VLC not available - TTS will print to console only")
 
