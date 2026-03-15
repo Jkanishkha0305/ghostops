@@ -1,0 +1,33 @@
+# Core AI
+google-genai>=1.67.0
+google-adk>=0.1.0
+google-cloud-firestore>=2.19.0
+google-api-core
+
+# Backend
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+httpx>=0.27.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Desktop / CUA
+pyaudio>=0.2.14
+mss>=9.0.2
+Pillow>=10.0.0
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+keyboard>=0.13.5
+numpy>=1.24.0
+
+# Browser (optional, CLOVIS has it)
+browser-use
+playwright
+
+# Audio (CLOVIS TTS - optional)
+requests>=2.31.0
+python-vlc>=3.0.18122
+
+# WebSocket (CLOVIS UI server)
+websockets
