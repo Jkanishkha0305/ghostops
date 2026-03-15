@@ -18,6 +18,11 @@ from google.cloud import firestore
 _db: firestore.AsyncClient | None = None
 
 
+def _reset_db() -> None:
+    global _db
+    _db = None
+
+
 def _get_db() -> firestore.AsyncClient:
     global _db
     if _db is None:

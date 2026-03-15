@@ -108,7 +108,7 @@ async def main():
 async def main_with_voice():
     """
     Full GhostOps entry point:
-    1. Start the Electron overlay (CLOVIS routing + screen annotation)
+    1. Start the Electron overlay (GhostOps routing + screen annotation)
     2. Start the voice module (Gemini Live API)
     Both run concurrently.
     """

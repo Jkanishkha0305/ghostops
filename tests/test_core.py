@@ -20,6 +20,15 @@ load_dotenv()
 TEST_SESSION = f"test-{uuid.uuid4().hex[:8]}"
 
 
+@pytest.fixture(autouse=True)
+def reset_firestore_client():
+    """Reset cached Firestore client between tests to avoid closed event loop errors."""
+    from backend.memory import _reset_db
+    _reset_db()
+    yield
+    _reset_db()
+
+
 # ── 1. Firestore roundtrip ───────────────────────────────────────────────────
 
 @pytest.mark.integration
