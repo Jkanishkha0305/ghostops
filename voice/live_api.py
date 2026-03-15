@@ -445,9 +445,29 @@ async def run() -> None:
             print("[ghostops] session ended")
 
 
+async def run_with_reconnect() -> None:
+    """Wraps run() with auto-reconnect on keepalive timeout or connection drop."""
+    import sys
+    retry_delay = 3
+    while True:
+        try:
+            await run()
+            break  # clean exit (KeyboardInterrupt propagated as normal exit)
+        except KeyboardInterrupt:
+            break
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "keepalive" in msg or "ping timeout" in msg or "1011" in msg or "connection" in msg:
+                print(f"\n[ghostops] connection dropped ({exc}) — reconnecting in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+            else:
+                print(f"[ghostops] fatal error: {exc}")
+                sys.exit(1)
+
+
 def main() -> None:
     try:
-        asyncio.run(run())
+        asyncio.run(run_with_reconnect())
     except KeyboardInterrupt:
         pass
 
