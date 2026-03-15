@@ -1,8 +1,8 @@
 import asyncio
+import base64
 import json
 import time
-from typing import Optional, Tuple
-
+from typing import Optional, Callable, Any
 import websockets
 from websockets.exceptions import ConnectionClosed
 from core.settings import get_screen_size, set_screen_size
@@ -22,7 +22,16 @@ class VisualizationServer:
     INVERTED_PANEL_DARK_THRESHOLD = 45
     STATUS_INVERTED_PANEL_DARK_THRESHOLD = 132
 
-    def __init__(self, host="127.0.0.1", port=8765, on_overlay_input=None, on_capture_screenshot=None, on_stop_all=None):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        on_overlay_input: Optional[Callable[[str], Any]] = None,
+        on_capture_screenshot: Optional[Callable[[], Any]] = None,
+        on_stop_all: Optional[Callable[[], Any]] = None,
+        on_start_mic: Optional[Callable[[], Any]] = None,
+        on_stop_mic: Optional[Callable[[], Any]] = None,
+    ):
         self.host = host
         self.port = port
         self.clients = set()
@@ -33,6 +42,8 @@ class VisualizationServer:
         self.on_overlay_input = on_overlay_input
         self.on_capture_screenshot = on_capture_screenshot
         self.on_stop_all = on_stop_all
+        self.on_start_mic = on_start_mic
+        self.on_stop_mic = on_stop_mic
         self._last_screenshot = None
         self._last_screenshot_rgb = None
         self._last_capture_backend = "none"
@@ -363,6 +374,18 @@ class VisualizationServer:
                             if asyncio.iscoroutine(result):
                                 await result
                         continue
+                    if event == "start_mic":
+                        if self.on_start_mic:
+                            result = self.on_start_mic()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        continue
+                    if event == "stop_mic":
+                        if self.on_stop_mic:
+                            result = self.on_stop_mic()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        continue
                     if event == "overlay_input":
                         text = payload.get("text", "")
                         request_id = payload.get("requestId") or payload.get("request_id")
@@ -414,3 +437,11 @@ class VisualizationServer:
 
         for client in stale:
             self.clients.discard(client)
+
+    async def send_mic_transcript(self, text: str, is_final: bool = False):
+        """Sends a microphone transcription update to the overlay input box."""
+        await self._broadcast({
+            "command": "mic_transcript",
+            "text": text,
+            "isFinal": is_final
+        })

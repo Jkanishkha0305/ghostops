@@ -65,9 +65,12 @@ def set_screen_size(screen_width: int, screen_height: int, settings_path: str = 
 
 
 def get_screen_size(settings_path: str = DEFAULT_SETTINGS_PATH) -> tuple[int, int]:
-    with open(settings_path, "r", encoding="utf-8") as handle:
-        settings = json.load(handle)
-    return (settings["screen_width"], settings["screen_height"])
+    try:
+        with open(settings_path, "r", encoding="utf-8") as handle:
+            settings = json.load(handle)
+        return (settings.get("screen_width", 1920), settings.get("screen_height", 1080))
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return (1920, 1080)
 
 
 def set_viewport_size(viewport_width: int, viewport_height: int, settings_path: str = DEFAULT_SETTINGS_PATH) -> None:
@@ -82,9 +85,14 @@ def set_viewport_size(viewport_width: int, viewport_height: int, settings_path: 
 
 
 def get_viewport_size(settings_path: str = DEFAULT_SETTINGS_PATH) -> tuple[int, int]:
-    with open(settings_path, "r", encoding="utf-8") as handle:
-        settings = json.load(handle)
-    return (settings["viewport_width"], settings["viewport_height"])
+    try:
+        with open(settings_path, "r", encoding="utf-8") as handle:
+            settings = json.load(handle)
+        sw, sh = get_screen_size(settings_path)
+        return (settings.get("viewport_width", sw), settings.get("viewport_height", sh))
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        sw, sh = get_screen_size(settings_path)
+        return (sw, sh)
 
 
 # ================================================================================================

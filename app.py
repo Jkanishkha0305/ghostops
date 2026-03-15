@@ -1,8 +1,18 @@
 import os
 import asyncio
 import time
+import io
+import wave
+import threading
+import pyaudio
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+
 from PIL import ImageGrab
 from core.settings import set_host_and_port, set_screen_size, get_model_configs, get_screen_size
+
+load_dotenv()
 
 from models.models import call_gemini, store_screenshot
 from agents.screen.tools import stop_all_actions
@@ -12,6 +22,62 @@ from agents.cua_vision.tools import (
 )
 from ui.server import VisualizationServer
 
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+SAMPLE_RATE = 16_000
+CHUNK = 1_024
+
+_stop_recording = threading.Event()
+_is_recording = False
+_mic_task = None
+_mic_thread = None
+
+def _record_to_event() -> bytes:
+    pya = pyaudio.PyAudio()
+    stream = pya.open(
+        format=FORMAT, channels=CHANNELS, rate=SAMPLE_RATE,
+        input=True, frames_per_buffer=CHUNK,
+    )
+    frames = []
+    while not _stop_recording.is_set():
+        try:
+            frames.append(stream.read(CHUNK, exception_on_overflow=False))
+        except OSError:
+            break
+    stream.stop_stream()
+    stream.close()
+    pya.terminate()
+    return b"".join(frames)
+
+def _pcm_to_wav(pcm: bytes) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(pcm)
+    return buf.getvalue()
+
+def _sync_transcribe(wav_bytes: bytes, rapid_model: str) -> str:
+    client = genai.Client()
+    response = client.models.generate_content(
+        model=rapid_model,
+        contents=[
+            types.Part(inline_data=types.Blob(data=wav_bytes, mime_type="audio/wav")),
+            "Please transcribe this audio exactly. Do not add any conversational filler, formatting, or thoughts. Return ONLY the transcribed text.",
+        ]
+    )
+    return (response.text or "").strip()
+
+async def transcribe_audio(wav_bytes: bytes, rapid_model: str, server: VisualizationServer):
+    print("[mic] Transcribing audio with Gemini...")
+    try:
+        text = await asyncio.to_thread(_sync_transcribe, wav_bytes, rapid_model)
+        print(f"[mic] Transcription: {text}")
+        await server.send_mic_transcript(text, is_final=True)
+    except Exception as exc:
+        print(f"[mic] Transcription failed: {exc}")
+        await server.send_mic_transcript("", is_final=True)
 
 async def main():
     # Figure out open port and set it in settings.json
@@ -64,6 +130,9 @@ async def main():
             print("Active task cancelled.")
         except Exception as exc:
             print(f"Active task failed: {exc}")
+            # Notify the UI so it can narrate "error"
+            from agents.screen.tools import direct_response
+            direct_response(f"Error: {exc}", source="error")
         finally:
             async with task_lock:
                 if current_task is asyncio.current_task():
@@ -89,12 +158,41 @@ async def main():
             task = asyncio.create_task(_run_overlay_task(text))
             current_task = task
 
+    def start_mic():
+        global _is_recording
+        if not _is_recording:
+            _is_recording = True
+            print("[mic] Starting recording...")
+            _stop_recording.clear()
+            loop = asyncio.get_running_loop()
+            
+            def _recording_worker():
+                import time
+                time.sleep(0.1) # Let PyAudio device initialize
+                pcm_bytes = _record_to_event()
+                wav_bytes = _pcm_to_wav(pcm_bytes)
+                asyncio.run_coroutine_threadsafe(
+                    transcribe_audio(wav_bytes, rapid_response_model, server),
+                    loop
+                )
+                        
+            threading.Thread(target=_recording_worker, daemon=True).start()
+
+    def stop_mic():
+        global _is_recording
+        if _is_recording:
+            _is_recording = False
+            print("[mic] Stopping recording...")
+            _stop_recording.set()
+
     server = VisualizationServer(
         host=host,
         port=port,
         on_overlay_input=handle_overlay_input,
         on_capture_screenshot=store_screenshot,
-        on_stop_all=stop_all
+        on_stop_all=stop_all,
+        on_start_mic=start_mic,
+        on_stop_mic=stop_mic
     )
     await server.start()
     print(f"Visualization server listening at ws://{host}:{port}")

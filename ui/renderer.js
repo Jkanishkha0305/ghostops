@@ -581,6 +581,10 @@ window.overlayShowDirectResponse = function(text, source = 'unknown', theme = nu
   const value = typeof text === 'string' ? text.trim() : '';
   if (!value) return;
   console.log(`[renderer][ui_text][${source}][direct_response] ${value}`);
+  
+  // Narrate the response
+  narrateText(value);
+
   const resolvedTheme = (lastDirectResponseTheme && typeof lastDirectResponseTheme === 'object')
     ? { ...lastDirectResponseTheme }
     : ((theme && typeof theme === 'object') ? { ...theme } : null);
@@ -603,6 +607,76 @@ window.overlayShowDirectResponse = function(text, source = 'unknown', theme = nu
       entry.el.classList.remove('ai-thinking');
     }
   });
+};
+
+function narrateText(text) {
+  if (!window.speechSynthesis) {
+    console.error('[renderer][tts] speechSynthesis not supported');
+    return;
+  }
+
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+
+  let textToSpeak = text;
+  const lowerText = text.toLowerCase();
+  
+  // If an error is detected, just say "error"
+  if (lowerText.includes('error') || lowerText.includes('failed') || lowerText.includes('exception')) {
+    textToSpeak = "error";
+  }
+
+  console.log(`[renderer][tts] speaking: "${textToSpeak}"`);
+  const utterance = new SpeechSynthesisUtterance(textToSpeak);
+  
+  // Debug listeners
+  utterance.onstart = () => console.log('[renderer][tts] started');
+  utterance.onend = () => console.log('[renderer][tts] finished');
+  utterance.onerror = (e) => console.error('[renderer][tts] error:', e);
+
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  
+  // On some systems (Windows especially), voices might take a moment to load
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    // Pick a default if possible, or just let the system decide
+    utterance.voice = voices.find(v => v.default) || voices[0];
+  }
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Warm up speech synthesis on the first user interaction to "unlock" audio in Electron/Chrome
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked || !window.speechSynthesis) return;
+  console.log('[renderer][tts] unlocking audio context...');
+  
+  // Test utterance
+  const test = new SpeechSynthesisUtterance('System ready');
+  test.volume = 0.5;
+  window.speechSynthesis.speak(test);
+  
+  audioUnlocked = true;
+  window.removeEventListener('mousedown', unlockAudio);
+  window.removeEventListener('keydown', unlockAudio);
+}
+window.addEventListener('mousedown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
+
+// Log available voices for debugging
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    const voices = window.speechSynthesis.getVoices();
+    console.log(`[renderer][tts] voices loaded: ${voices.length}`, voices.map(v => v.name).slice(0, 3));
+  };
+}
+
+window.overlayCancelNarration = () => {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
 };
 
 console.log('[renderer] boot', { width: window.innerWidth, height: window.innerHeight });
@@ -792,6 +866,10 @@ async function connectSocket() {
     } else if (payload.command === 'hide_cursor_status') {
       if (window.hideCursorStatus) {
         window.hideCursorStatus();
+      }
+    } else if (payload.command === 'mic_transcript') {
+      if (window.overlaySetMicTranscript) {
+        window.overlaySetMicTranscript(payload.text, payload.isFinal);
       }
     } else if (payload.command === 'set_cursor_status_position') {
       if (window.setCursorStatusPosition) {

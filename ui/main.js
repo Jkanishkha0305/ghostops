@@ -8,6 +8,8 @@ let cursorPoller;
 
 console.log('[main] boot', { cwd: process.cwd(), dir: __dirname });
 
+
+
 function registerShortcut(accelerator, label, callback) {
   try {
     const registered = globalShortcut.register(accelerator, callback);
@@ -167,7 +169,7 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
-  registerShortcut('Command+Shift+Space', 'show overlay', () => {
+  registerShortcut('CommandOrControl+Shift+Space', 'show overlay', () => {
     if (win && !win.isDestroyed()) {
       win.webContents.send('show-overlay-image');
     }

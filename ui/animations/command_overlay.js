@@ -15,20 +15,20 @@ let hideOverlayTimeout = null;
 let logoSyncRaf = null;
 let logoSyncUntil = 0;
 
-function getElementTranslateY(el) {
-  if (!el) return 0;
+function getElementTranslations(el) {
+  if (!el) return { x: 0, y: 0 };
   const computed = window.getComputedStyle(el);
   const transform = computed?.transform;
   if (!transform || transform === 'none') {
-    return 0;
+    return { x: 0, y: 0 };
   }
 
   // matrix(a, b, c, d, tx, ty)
   const matrix2d = transform.match(/^matrix\(([^)]+)\)$/);
   if (matrix2d) {
     const values = matrix2d[1].split(',').map((part) => Number(part.trim()));
-    if (values.length === 6 && Number.isFinite(values[5])) {
-      return values[5];
+    if (values.length === 6) {
+      return { x: values[4], y: values[5] };
     }
   }
 
@@ -36,25 +36,29 @@ function getElementTranslateY(el) {
   const matrix3d = transform.match(/^matrix3d\(([^)]+)\)$/);
   if (matrix3d) {
     const values = matrix3d[1].split(',').map((part) => Number(part.trim()));
-    if (values.length === 16 && Number.isFinite(values[13])) {
-      return values[13];
+    if (values.length === 16) {
+      return { x: values[12], y: values[13] };
     }
   }
 
-  return 0;
+  return { x: 0, y: 0 };
 }
 
-function syncCommandLogoVerticalPosition() {
+function syncCommandLogoPosition() {
   if (!commandLogo || !commandInputWrap) return;
-  let anchorRect = commandSend?.getBoundingClientRect();
-  if (!anchorRect || !Number.isFinite(anchorRect.height) || anchorRect.height <= 0) {
-    anchorRect = commandInputWrap.getBoundingClientRect();
-  }
+  // Use the left edge of the input wrap as the anchor for the "begining" position
+  const anchorRect = commandInputWrap.getBoundingClientRect();
   if (!anchorRect || !Number.isFinite(anchorRect.top) || anchorRect.height <= 0) return;
+
+  // Align logo center to the left edge of the input bar + user's preferred offset
+  const anchorCenterX = anchorRect.left + 30;
   const anchorCenterY = anchorRect.top + (anchorRect.height / 2);
+  const logoWidth = commandLogo.offsetWidth || 70;
   const logoHeight = commandLogo.offsetHeight || 70;
-  const translateY = getElementTranslateY(commandLogo);
-  commandLogo.style.top = `${Math.round(anchorCenterY - (logoHeight / 2) - translateY)}px`;
+  const translations = getElementTranslations(commandLogo);
+
+  commandLogo.style.left = `${Math.round(anchorCenterX - (logoWidth / 2) - translations.x)}px`;
+  commandLogo.style.top = `${Math.round(anchorCenterY - (logoHeight / 2) - translations.y)}px`;
 }
 
 function stopLogoSyncLoop() {
@@ -74,13 +78,13 @@ function startLogoSyncLoop(durationMs = 1800) {
       stopLogoSyncLoop();
       return;
     }
-    syncCommandLogoVerticalPosition();
+    syncCommandLogoPosition();
     if (performance.now() < logoSyncUntil) {
       logoSyncRaf = requestAnimationFrame(tick);
       return;
     }
     logoSyncRaf = null;
-    syncCommandLogoVerticalPosition();
+    syncCommandLogoPosition();
   };
 
   logoSyncRaf = requestAnimationFrame(tick);
@@ -166,9 +170,12 @@ function showCommandOverlay() {
   }
   commandInput.value = '';
   resizeInput();
-  setInputMode(false);
+  setInputMode(true);
   startLogoSyncLoop(1800);
-  setTimeout(() => commandInput.focus(), 20);
+  setTimeout(() => {
+    syncCommandLogoPosition();
+    commandInput.focus();
+  }, 20);
 }
 
 function collapseCommandBar() {
@@ -286,9 +293,14 @@ function sendCommand() {
   if (!overlayActive) return;
   const text = commandInput.value.trim();
   if (!text) {
+    if (window.overlayCancelNarration) window.overlayCancelNarration();
+    if (window.overlayHideResponse) window.overlayHideResponse();
     hideCommandOverlay();
     return;
   }
+
+  if (window.overlayCancelNarration) window.overlayCancelNarration();
+  if (window.overlayHideResponse) window.overlayHideResponse();
 
   const now = Date.now();
   if (text === lastSubmittedText && (now - lastSubmittedAt) < 1200) {
@@ -349,7 +361,8 @@ function restoreCommandBar() {
   if (commandLogo) {
     commandLogo.style.animation = 'none';
     commandLogo.style.opacity = '1';
-    commandLogo.style.transform = 'translate3d(calc(-50% - 235px), calc(-50% - 43px), 0) scale(0.45)';
+    // Match the user's +30px offset from the left edge (center-230+30 = center-200)
+    commandLogo.style.transform = 'translate3d(calc(-50% - 200px), calc(-50% - 43px), 0) scale(0.45)';
     commandLogo.style.pointerEvents = '';
   }
   if (commandLogoSpin) {
@@ -361,8 +374,17 @@ function restoreCommandBar() {
     commandInputWrap.style.opacity = '1';
     commandInputWrap.style.pointerEvents = '';
   }
+
+  // Auto-clear and prepare for next input when restored
+  if (commandInput) {
+    commandInput.value = '';
+    resizeInput();
+    setInputMode(true);
+    setTimeout(() => commandInput.focus(), 50);
+  }
+
   requestAnimationFrame(() => {
-    syncCommandLogoVerticalPosition();
+    syncCommandLogoPosition();
     if (overlayActive) {
       // Keep logo centered while restore transitions settle.
       startLogoSyncLoop(700);
@@ -384,13 +406,20 @@ commandInput?.addEventListener('focus', () => {
 commandInput?.addEventListener('blur', () => {
   inputFocused = false;
   window.overlayInputFocusedFlag = false;
-  setInputMode(false);
+  // Don't call setInputMode(false) here. We want the window to remain focusable 
+  // while the overlay is active so the user can easily click back into it.
+});
+commandInputWrap?.addEventListener('click', () => {
+  commandInput?.focus();
 });
 commandSend?.addEventListener('click', () => sendCommand());
 commandInput?.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
     sendCommand();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    hideCommandOverlay();
   }
 });
 
@@ -404,8 +433,152 @@ document.addEventListener('keydown', (event) => {
 
 window.addEventListener('resize', () => {
   if (!overlayActive) return;
-  syncCommandLogoVerticalPosition();
+  syncCommandLogoPosition();
 });
+
+// --- Voice Push-To-Talk Logic (Backend-Driven) ---
+const commandMic = document.getElementById('command-mic');
+let isRecording = false;
+
+window.overlaySetMicTranscript = function (text, isFinal) {
+  if (commandInput) {
+    if (text) {
+      // Only append text if there is something transcribed
+      let existing = commandInput.value;
+      commandInput.value = existing ? existing + " " + text : text;
+      resizeInput();
+    }
+  }
+  if (isFinal) {
+    stopRecording(true);
+  }
+};
+
+function startRecording() {
+  if (!isRecording) {
+    isRecording = true;
+    if (commandMic) commandMic.classList.add('recording');
+    if (commandInput) {
+      commandInput.placeholder = "Listening...";
+      // Removed clearing value so users can mix typing and audio
+    }
+    if (window.overlaySend) {
+      window.overlaySend({ event: 'start_mic' });
+    }
+    commandInput?.focus();
+  }
+}
+
+function stopRecording(skipBackendSignal = false) {
+  if (isRecording) {
+    isRecording = false;
+    if (commandMic) commandMic.classList.remove('recording');
+    if (commandInput && commandInput.placeholder === "Listening...") {
+      commandInput.placeholder = "GhostOps — what do you need?";
+    }
+    if (window.overlaySend && !skipBackendSignal) {
+      window.overlaySend({ event: 'stop_mic' });
+    }
+    commandInput?.focus();
+  }
+}
+
+// --- Draggable Command Bar Logic ---
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let barOffsetX = 0;
+let barOffsetY = 0;
+
+if (commandBar) {
+  commandBar.addEventListener('mousedown', (e) => {
+    // Only drag with left click and not on interactive elements like input or buttons
+    if (e.button !== 0 || e.target.closest('#command-input, #command-mic, #command-send')) return;
+
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    commandBar.classList.add('dragging');
+
+    // Add a temporary overlay to catch mouse moves if needed, or just use window
+    window.addEventListener('mousemove', onDragging);
+    window.addEventListener('mouseup', stopDragging);
+
+    // Notify Electron to keep capturing mouse
+    if (window.api?.setWindowInteractive) {
+      window.api.setWindowInteractive(true);
+    }
+  });
+}
+
+function onDragging(e) {
+  if (!isDragging || !commandBar) return;
+
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+
+  barOffsetX += dx;
+  barOffsetY += dy;
+
+  // Base transform is translate3d(-50%, calc(-50% - 20px), 0)
+  // We add our offsets to this.
+  commandBar.style.transform = `translate3d(calc(-50% + ${barOffsetX}px), calc(-50% - 20px + ${barOffsetY}px), 0)`;
+
+  // Update logo position as well
+  syncCommandLogoPosition();
+}
+
+function stopDragging() {
+  if (!isDragging) return;
+  isDragging = false;
+  commandBar.classList.remove('dragging');
+
+  window.removeEventListener('mousemove', onDragging);
+  window.removeEventListener('mouseup', stopDragging);
+
+  // Recalculate anchor for direct responses
+  cacheDirectResponseAnchor();
+}
+
+if (commandMic) {
+  // Prevent the microphone button from stealing focus, which triggers the 
+  // aggressive blur() -> setInputMode(false) lock in Electron.
+  commandMic.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+  });
+
+  commandMic.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
+}
+
+// Ensure recording stops when overlay hides
+const originalHideCommandOverlay = hideCommandOverlay;
+hideCommandOverlay = function () {
+  stopRecording();
+  originalHideCommandOverlay();
+};
+
+const originalCollapseCommandBar = collapseCommandBar;
+collapseCommandBar = function () {
+  stopRecording();
+  originalCollapseCommandBar();
+};
+
+const originalForceResetCommandOverlay = forceResetCommandOverlay;
+forceResetCommandOverlay = function () {
+  stopRecording();
+  originalForceResetCommandOverlay();
+};
+// --- End Voice Logic ---
 
 if (window.api?.onOverlayImage) {
   window.api.onOverlayImage(() => {
