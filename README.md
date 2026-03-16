@@ -10,7 +10,7 @@
 [![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Run%20%2B%20Firestore-4285F4?style=flat-square&logo=googlecloud&logoColor=white)](https://cloud.google.com)
 [![Electron](https://img.shields.io/badge/Electron-Overlay%20UI-47848F?style=flat-square&logo=electron&logoColor=white)](https://electronjs.org)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Groq](https://img.shields.io/badge/Groq-Vision%20%2B%20Text-F55036?style=flat-square)](https://groq.com)
+[![Gemini Flash](https://img.shields.io/badge/Gemini%202.5%20Flash-Vision%20%2B%20Text-4285F4?style=flat-square&logo=google&logoColor=white)](https://ai.google.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 ---
@@ -71,8 +71,8 @@ You press ⌘+Shift+Space
 │                    PYTHON CORE  (app.py)                                │
 │                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                   TWO-TIER GROQ ROUTER                          │   │
-│  │  llama-3.1-8b-instant → decides which agent handles the task    │   │
+│  │                    GEMINI 2.5 FLASH ROUTER                      │   │
+│  │  gemini-2.5-flash → decides which agent handles the task        │   │
 │  │                                                                 │   │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │   │
 │  │  │ direct   │ │ screen   │ │  cua_    │ │ browser  │          │   │
@@ -84,8 +84,8 @@ You press ⌘+Shift+Space
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 │  ┌──────────────────┐    ┌──────────────────────────────────────────┐  │
-│  │  Groq Vision     │    │  Google Cloud                            │  │
-│  │  llama-4-scout   │    │  ├─ Firestore  (session memory)          │  │
+│  │  Gemini 2.5      │    │  Google Cloud                            │  │
+│  │  Flash Vision    │    │  ├─ Firestore  (session memory)          │  │
 │  │  (screen see)    │    │  ├─ Cloud Run  (backend API)             │  │
 │  └──────────────────┘    │  └─ Gemini 2.5 Flash (voice/vision)     │  │
 │                          └──────────────────────────────────────────┘  │
@@ -114,14 +114,14 @@ You press ⌘+Shift+Space
 
 ## 🧠 Agent Routing
 
-Every input is routed by a lightweight LLM (Groq llama-3.1-8b-instant, 500K TPD) to the right specialist:
+Every input is routed by **Gemini 2.5 Flash** to the right specialist:
 
 ```
 User Input
     │
     ▼
 ┌─────────────────────────────────────────────────────┐
-│                  ROUTER (8b-instant)                │
+│           ROUTER (Gemini 2.5 Flash)                 │
 └──┬──────────┬──────────┬──────────┬──────────┬──────┘
    │          │          │          │          │
    ▼          ▼          ▼          ▼          ▼
@@ -146,7 +146,7 @@ The standout feature. GhostOps **watches you work** and learns to replicate it:
 ```
 RECORD                           EXTRACT                      REPLAY
 ──────                           ───────                      ──────
-User: "watch me"                 Last frame → Groq            For each step:
+User: "watch me"                 Last frame → Gemini          For each step:
   │                              vision →                       │
   ▼                              JSON steps:                    ▼
 Screenshot every 2s              [{                          VisionAgent.execute(
@@ -213,7 +213,6 @@ Edit `.env` and fill in your keys:
 ```env
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
-GROQ_API_KEY=your_groq_api_key_here
 GOOGLE_CLOUD_PROJECT=your_gcp_project_id
 
 # Optional
@@ -224,7 +223,6 @@ FIRESTORE_SESSION_ID=your_username
 
 > 💡 **Get your keys:**
 > - Gemini: [aistudio.google.com](https://aistudio.google.com) → Get API Key
-> - Groq: [console.groq.com](https://console.groq.com) → API Keys (free tier)
 > - GCP: [console.cloud.google.com](https://console.cloud.google.com) → create project
 
 ### 5. Personalize (optional but recommended)
@@ -366,7 +364,7 @@ ghostops/
 │   │
 │   ├── cua_vision/                  ← Computer use (sees screen → clicks)
 │   │   ├── agent.py                 ← VisionAgent
-│   │   ├── single_call.py           ← Main execution loop + loop detection
+│   │   ├── single_call.py           ← Gemini vision execution loop + loop detection
 │   │   ├── tools.py                 ← go_to_element, click, type_string, etc.
 │   │   └── prompts.py
 │   │
@@ -380,7 +378,7 @@ ghostops/
 │       └── engine.py                ← start_recording, stop_and_save, replay
 │
 ├── 🧠 models/
-│   ├── models.py                    ← Two-tier Groq router + agent dispatch
+│   ├── models.py                    ← Gemini 2.5 Flash router + agent dispatch
 │   ├── function_calls.py            ← Tool declarations for all 6 routes
 │   └── prompts.py                   ← Personalized system prompts
 │
@@ -403,7 +401,7 @@ ghostops/
 │
 ├── 🔧 core/
 │   ├── settings.py                  ← Read/write settings.json
-│   ├── groq_provider.py             ← Groq text + vision + STT (Whisper)
+│   ├── gemini_provider.py           ← Gemini text + vision + audio (STT)
 │   └── registry.py                  ← Shared overlay state
 │
 ├── 🖼️  desktop/
@@ -470,7 +468,7 @@ When GhostOps performs a computer-use task (clicking, typing, navigating), this 
             └───────────────┬───────────────┘
                             │
             ┌───────────────▼───────────────┐
-            │  2. Send to Groq llama-4-scout │
+            │  2. Send to Gemini 2.5 Flash   │
             │     with task + tool schema    │
             └───────────────┬───────────────┘
                             │
@@ -506,31 +504,30 @@ When GhostOps performs a computer-use task (clicking, typing, navigating), this 
 |---|---|---|
 | **Overlay UI** | Electron + HTML Canvas | Transparent, always-on-top, cross-workspace |
 | **IPC** | WebSocket (Python ↔ Electron) | Low-latency bidirectional drawing commands |
-| **Router LLM** | Groq llama-3.1-8b-instant | 500K TPD, fast enough for routing decisions |
-| **Vision LLM** | Groq llama-4-scout-17b | 500K TPD, multimodal, tool calling |
+| **Router LLM** | Gemini 2.5 Flash | Fast multimodal routing decisions |
+| **Vision LLM** | Gemini 2.5 Flash | Multimodal screen understanding + tool calling |
 | **Voice** | Gemini Live API (2.5 Flash) | Real-time streaming audio, lowest latency |
 | **Browser** | Playwright + browser-use | Reliable cross-browser automation |
 | **Screenshot** | PIL ImageGrab + mss | macOS-native, low overhead |
 | **Mouse/KB** | pyautogui | Cross-platform desktop control |
 | **Memory** | Google Cloud Firestore | Real-time, serverless, persistent |
 | **Backend** | FastAPI on Cloud Run | Auto-scaling, no cold starts |
-| **STT** | Groq Whisper (large-v3-turbo) | Fast, accurate, on-demand |
+| **STT** | Gemini Audio / Web Speech API | Fast, accurate, on-demand transcription |
 | **TTS** | ElevenLabs (optional) | Natural voice output |
 
 ---
 
-## ⚡ Model Usage & Limits
+## ⚡ Model Usage
 
-| Model | Used For | Daily Limit |
+| Model | Used For | Notes |
 |---|---|---|
-| `llama-3.1-8b-instant` | Routing decisions | 500K tokens/day |
-| `llama-4-scout-17b` | Vision + screen understanding | 500K tokens/day |
-| `whisper-large-v3-turbo` | Voice transcription (STT) | On-demand |
-| `gemini-2.5-flash` | Voice sessions (Live API) | Quota-based |
+| `gemini-2.5-flash` | Routing decisions + vision + screen understanding | Primary model for all agent tasks |
+| `gemini-2.5-flash` | Voice sessions (Live API) | Real-time bidirectional audio |
+| `gemini-2.5-flash` | Workflow step extraction | Multimodal screenshot analysis |
 
-> 💡 To avoid daily limits, switch vision calls to **Vertex AI** (uses GCP credits):
+> 💡 To use Vertex AI instead of the API key (recommended for production / unlimited quota):
 > ```python
-> # In models/models.py line ~867:
+> # In models/models.py:
 > self.client = genai.Client(vertexai=True, project="your-project", location="us-central1")
 > ```
 
@@ -538,7 +535,7 @@ When GhostOps performs a computer-use task (clicking, typing, navigating), this 
 
 ## 🔒 Security & Privacy
 
-- **No data leaves your machine** except API calls (Groq, Gemini, Firestore)
+- **No data leaves your machine** except API calls (Gemini, Firestore)
 - Screenshots are captured in-memory and sent directly to the model — never written to disk
 - `.env` is gitignored — API keys are never committed
 - The overlay window is `focusable: false` by default — it doesn't steal keyboard focus until you summon it
@@ -555,7 +552,7 @@ python app.py  # should print "Overlay client connected"
 ```
 
 **"Rate limit exceeded" errors**
-> The 500K daily token limit resets at midnight UTC. Switch to Vertex AI for unlimited usage with your GCP credits.
+> Switch to Vertex AI for higher quota using your GCP credits (see Model Usage section above).
 
 **Mouse clicks land in wrong place**
 > Ensure macOS Accessibility permission is granted for Terminal and the Electron app.
@@ -583,10 +580,10 @@ python app.py  # should print "Overlay client connected"
 
 GhostOps is built on the shoulders of:
 
-- **[CLOVIS](https://github.com/original/clovis)** — The Electron overlay architecture, canvas rendering system, two-tier Groq router, and CUA vision loop. Core UI and agent dispatch design.
+- **[CLOVIS](https://github.com/original/clovis)** — The Electron overlay architecture, canvas rendering system, and CUA vision loop. Core UI and agent dispatch design.
 - **[browser-use](https://github.com/browser-use/browser-use)** — Browser automation framework
 - **[Gemini Live API](https://ai.google.dev/gemini-api/docs/live)** — Real-time voice streaming
-- **[Groq](https://groq.com)** — Ultra-fast LLM inference
+- **[Google GenAI SDK](https://ai.google.dev)** — Multimodal AI backbone powering all agents
 
 ---
 
