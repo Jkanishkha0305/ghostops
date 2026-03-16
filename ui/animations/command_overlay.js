@@ -424,86 +424,100 @@ window.overlayHideCommandOverlay = hideCommandOverlay;
 
 resizeInput();
 
-// ── Voice Input (STT via Web Speech API) ────────────────────────────────────
+// ── Voice Input (STT via Groq Whisper) ──────────────────────────────────────
+// Uses MediaRecorder to capture mic audio locally, sends to Python backend
+// which calls Groq Whisper for transcription. No Google/cloud dependency.
 const commandMic = document.getElementById('command-mic');
-let recognition = null;
 let micActive = false;
+let _mediaRecorder = null;
+let _audioChunks = [];
+let _micStream = null;
 
-function startVoiceInput() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    console.warn('[voice] SpeechRecognition not available in this environment');
-    return;
-  }
+async function startVoiceInput() {
   if (micActive) {
     stopVoiceInput();
     return;
   }
 
-  recognition = new SpeechRecognition();
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-  recognition.maxAlternatives = 1;
+  try {
+    _micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch (err) {
+    console.error('[voice] mic access denied:', err);
+    return;
+  }
 
-  recognition.onstart = () => {
-    micActive = true;
-    commandMic?.classList.add('mic-active');
-    if (commandInput) commandInput.placeholder = 'Listening...';
+  _audioChunks = [];
+  // Prefer opus/webm for smaller payloads; fall back to whatever the browser supports
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : '';
+  _mediaRecorder = new MediaRecorder(_micStream, mimeType ? { mimeType } : {});
+
+  _mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) _audioChunks.push(e.data);
   };
 
-  recognition.onresult = (event) => {
-    let interim = '';
-    let finalTranscript = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscript += t;
-      } else {
-        interim += t;
-      }
+  _mediaRecorder.onstop = async () => {
+    _stopMicStream();
+    if (_audioChunks.length === 0) return;
+    const blob = new Blob(_audioChunks, { type: _mediaRecorder.mimeType || 'audio/webm' });
+    const mime = blob.type.split(';')[0]; // strip codecs param
+    const arrayBuf = await blob.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+    if (commandInput) commandInput.placeholder = 'Transcribing...';
+    if (window.overlaySend) {
+      window.overlaySend({ event: 'stt_audio', audio_b64: b64, mime_type: mime });
     }
-    if (commandInput) {
-      commandInput.value = finalTranscript || interim;
-      resizeInput();
-    }
-    if (finalTranscript) {
-      stopVoiceInput();
-      // Small delay so the user can see the transcription before it sends
-      setTimeout(() => sendCommand(), 300);
-    }
+    _audioChunks = [];
   };
 
-  recognition.onerror = (e) => {
-    console.error('[voice] STT error:', e.error);
-    stopVoiceInput();
-    if (commandInput) commandInput.placeholder = 'GhostOps — what do you need?';
-  };
+  _mediaRecorder.start();
+  micActive = true;
+  commandMic?.classList.add('mic-active');
+  if (commandInput) commandInput.placeholder = 'Listening…  (click mic to stop)';
+}
 
-  recognition.onend = () => {
-    micActive = false;
-    commandMic?.classList.remove('mic-active');
-    if (commandInput) commandInput.placeholder = 'GhostOps — what do you need?';
-  };
-
-  recognition.start();
+function _stopMicStream() {
+  if (_micStream) {
+    _micStream.getTracks().forEach((t) => t.stop());
+    _micStream = null;
+  }
 }
 
 function stopVoiceInput() {
-  if (recognition) {
-    try { recognition.stop(); } catch (_) {}
-    recognition = null;
+  if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+    _mediaRecorder.stop(); // triggers onstop → sends audio to backend
+  } else {
+    _stopMicStream();
   }
   micActive = false;
   commandMic?.classList.remove('mic-active');
+  if (commandInput && commandInput.placeholder.startsWith('Listening')) {
+    commandInput.placeholder = 'GhostOps — what do you need?';
+  }
 }
+
+// Called by renderer.js when backend returns the Whisper transcript
+window.overlayHandleSttResult = (text) => {
+  if (commandInput) {
+    commandInput.value = text;
+    resizeInput();
+    commandInput.placeholder = 'GhostOps — what do you need?';
+  }
+  if (text.trim()) {
+    setTimeout(() => sendCommand(), 250);
+  }
+};
 
 commandMic?.addEventListener('click', () => {
   if (!overlayActive) return;
-  startVoiceInput();
+  if (micActive) stopVoiceInput();
+  else startVoiceInput();
 });
 
-// Stop recognition when overlay closes
+// Stop recording when overlay closes
 const _origHideCommandOverlay = window.overlayHideCommandOverlay;
 window.overlayHideCommandOverlay = function () {
   stopVoiceInput();

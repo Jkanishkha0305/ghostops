@@ -17,27 +17,8 @@
   user-select: text;
 }
 
-.ai-ar-drag-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 22px;
-  border-radius: 18px 18px 0 0;
-  cursor: grab;
-  z-index: 1;
-  /* invisible but interactive */
-  background: transparent;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.ai-ar-drag-handle:active,
-.ai-ar-drag-handle.dragging {
-  cursor: grabbing;
-}
-
 .ai-ar-panel {
+  cursor: grab;
   position: relative;
   max-width: 320px;
   display: flex;
@@ -69,6 +50,10 @@
   margin-bottom: 2px;
 }
 
+.ai-ar-panel:active {
+  cursor: grabbing;
+}
+
 .ai-ar-text {
   font-family: -apple-system, "Inter", sans-serif;
   font-size: 14px;
@@ -79,6 +64,7 @@
   white-space: pre-wrap;
   -webkit-user-select: text;
   user-select: text;
+  cursor: text;
 }
 
 .ai-ar-text::selection {

@@ -95,6 +95,17 @@ async def main():
         import threading
         threading.Thread(target=tts_speak, args=(text,), daemon=True).start()
 
+    async def handle_stt_audio(audio_bytes: bytes, mime_type: str) -> str:
+        """Transcribe audio via Groq Whisper and return transcript."""
+        from core.groq_provider import transcribe_audio
+        ext = "webm" if "webm" in mime_type else "ogg" if "ogg" in mime_type else "wav"
+        filename = f"stt_input.{ext}"
+        try:
+            return await transcribe_audio(audio_bytes, filename=filename)
+        except Exception as e:
+            print(f"[STT] transcription error: {e}")
+            return ""
+
     server = VisualizationServer(
         host=host,
         port=port,
@@ -102,6 +113,7 @@ async def main():
         on_capture_screenshot=store_screenshot,
         on_stop_all=stop_all,
         on_tts_speak=handle_tts_speak,
+        on_stt_audio=handle_stt_audio,
     )
     await server.start()
     print(f"Visualization server listening at ws://{host}:{port}")

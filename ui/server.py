@@ -22,7 +22,7 @@ class VisualizationServer:
     INVERTED_PANEL_DARK_THRESHOLD = 45
     STATUS_INVERTED_PANEL_DARK_THRESHOLD = 132
 
-    def __init__(self, host="127.0.0.1", port=8765, on_overlay_input=None, on_capture_screenshot=None, on_stop_all=None, on_tts_speak=None):
+    def __init__(self, host="127.0.0.1", port=8765, on_overlay_input=None, on_capture_screenshot=None, on_stop_all=None, on_tts_speak=None, on_stt_audio=None):
         self.host = host
         self.port = port
         self.clients = set()
@@ -34,6 +34,7 @@ class VisualizationServer:
         self.on_capture_screenshot = on_capture_screenshot
         self.on_stop_all = on_stop_all
         self.on_tts_speak = on_tts_speak
+        self.on_stt_audio = on_stt_audio
         self._last_screenshot = None
         self._last_screenshot_rgb = None
         self._last_capture_backend = "none"
@@ -363,6 +364,20 @@ class VisualizationServer:
                             result = self.on_stop_all()
                             if asyncio.iscoroutine(result):
                                 await result
+                        continue
+                    if event == "stt_audio":
+                        import base64
+                        audio_b64 = payload.get("audio_b64", "")
+                        mime_type = payload.get("mime_type", "audio/webm")
+                        if audio_b64 and self.on_stt_audio:
+                            audio_bytes = base64.b64decode(audio_b64)
+                            result = self.on_stt_audio(audio_bytes, mime_type)
+                            if asyncio.iscoroutine(result):
+                                transcript = await result
+                            else:
+                                transcript = result
+                            if transcript:
+                                await self._broadcast({"command": "stt_result", "text": transcript})
                         continue
                     if event == "tts_speak":
                         text = payload.get("text", "")

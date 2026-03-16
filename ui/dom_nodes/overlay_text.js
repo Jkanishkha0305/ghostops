@@ -16,37 +16,36 @@ export function ensureOverlayTextBubble(root) {
     bubble = document.createElement('div');
     bubble.className = 'ai-ar-panel';
 
-    // Drag handle — invisible top strip that initiates dragging
-    const dragHandle = document.createElement('div');
-    dragHandle.className = 'ai-ar-drag-handle';
-    bubble.appendChild(dragHandle);
-
     const textEl = document.createElement('div');
     textEl.className = 'ai-ar-text';
     bubble.appendChild(textEl);
     root.replaceChildren(bubble);
 
-    _attachDrag(root, dragHandle);
+    _attachDrag(root, bubble);
   }
   const textEl = bubble.querySelector('.ai-ar-text');
   return { bubble, textEl };
 }
 
-function _attachDrag(root, handle) {
-  handle.addEventListener('mousedown', (e) => {
+function _attachDrag(root, bubble) {
+  // Drag from anywhere on the bubble EXCEPT the selectable text content
+  bubble.addEventListener('mousedown', (e) => {
+    // Let text selection work normally on the text node itself
+    if (e.target.closest('.ai-ar-text')) return;
+    if (e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
-    // Notify renderer that a drag is active so hit-test keeps window interactive
+    // Tell the hit-test system to keep the window interactive during drag
     window.overlaySetDragging?.(true);
-    handle.classList.add('dragging');
 
-    // Resolve actual pixel position (accounting for any CSS transforms like translate(-50%))
-    const bubbleRect = root.getBoundingClientRect();
-    const origLeft = bubbleRect.left;
-    const origTop = bubbleRect.top;
+    // getBoundingClientRect already accounts for CSS transforms
+    const rect = root.getBoundingClientRect();
+    const origLeft = rect.left;
+    const origTop = rect.top;
 
-    // Flatten transform so left/top are screen coordinates
+    // Replace transform with explicit pixel coords so the move math is simple
     root.style.transform = 'none';
     root.style.setProperty('--text-translate-x', '0%');
     root.style.setProperty('--text-translate-y', '0%');
@@ -62,7 +61,6 @@ function _attachDrag(root, handle) {
     };
 
     const onUp = () => {
-      handle.classList.remove('dragging');
       window.overlaySetDragging?.(false);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);

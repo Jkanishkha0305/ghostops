@@ -824,6 +824,10 @@ async function connectSocket() {
       if (window.setCursorStatusPosition) {
         window.setCursorStatusPosition(payload.x || 0, payload.y || 0);
       }
+    } else if (payload.command === 'stt_result') {
+      if (window.overlayHandleSttResult) {
+        window.overlayHandleSttResult(payload.text || '');
+      }
     }
   });
 }

@@ -73,6 +73,16 @@ async def generate_vision(
     return (resp.choices[0].message.content or "").strip()
 
 
+async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
+    """Transcribe audio using Groq Whisper. Returns transcript text."""
+    resp = await _get_client().audio.transcriptions.create(
+        model="whisper-large-v3-turbo",
+        file=(filename, audio_bytes),
+        response_format="text",
+    )
+    return str(resp).strip()
+
+
 async def generate_vision_with_tools(
     system: str,
     user_text: str,
