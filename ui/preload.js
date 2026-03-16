@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   setWindowInteractive: (interactive) => ipcRenderer.send('toggle-mouse', interactive),
   reportHitTest: (isOver) => ipcRenderer.send('cursor-hit-test', isOver),
+  startDrag: () => ipcRenderer.send('drag-start'),
+  endDrag: () => ipcRenderer.send('drag-end'),
   onCursorPosition: (callback) =>
     ipcRenderer.on('cursor-position', (event, point) => callback(point)),
   onResetConfigure: (callback) =>

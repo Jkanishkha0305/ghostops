@@ -16,36 +16,40 @@ export function ensureOverlayTextBubble(root) {
     bubble = document.createElement('div');
     bubble.className = 'ai-ar-panel';
 
+    // Drag strip — sits above text content, clearly grabbable
+    const strip = document.createElement('div');
+    strip.className = 'ai-ar-drag-strip';
+    strip.innerHTML = '<span class="ai-ar-grip">⠿</span>';
+    bubble.appendChild(strip);
+
     const textEl = document.createElement('div');
     textEl.className = 'ai-ar-text';
     bubble.appendChild(textEl);
     root.replaceChildren(bubble);
 
-    _attachDrag(root, bubble);
+    _attachDrag(root, strip);
   }
   const textEl = bubble.querySelector('.ai-ar-text');
   return { bubble, textEl };
 }
 
-function _attachDrag(root, bubble) {
-  // Drag from anywhere on the bubble EXCEPT the selectable text content
-  bubble.addEventListener('mousedown', (e) => {
-    // Let text selection work normally on the text node itself
-    if (e.target.closest('.ai-ar-text')) return;
+function _attachDrag(root, strip) {
+  strip.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-
     e.preventDefault();
     e.stopPropagation();
 
-    // Tell the hit-test system to keep the window interactive during drag
-    window.overlaySetDragging?.(true);
+    console.log('[drag] mousedown start');
 
-    // getBoundingClientRect already accounts for CSS transforms
+    // Force window interactive through the entire drag (bypasses cursor poll)
+    window.overlaySetDragging?.(true);
+    window.api?.startDrag?.();
+
+    // Resolve actual position, flattening any CSS transforms
     const rect = root.getBoundingClientRect();
     const origLeft = rect.left;
     const origTop = rect.top;
 
-    // Replace transform with explicit pixel coords so the move math is simple
     root.style.transform = 'none';
     root.style.setProperty('--text-translate-x', '0%');
     root.style.setProperty('--text-translate-y', '0%');
@@ -54,6 +58,7 @@ function _attachDrag(root, bubble) {
 
     const startX = e.clientX;
     const startY = e.clientY;
+    strip.classList.add('dragging');
 
     const onMove = (ev) => {
       root.style.left = `${origLeft + ev.clientX - startX}px`;
@@ -61,13 +66,17 @@ function _attachDrag(root, bubble) {
     };
 
     const onUp = () => {
+      console.log('[drag] mouseup end');
+      strip.classList.remove('dragging');
       window.overlaySetDragging?.(false);
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      window.api?.endDrag?.();
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
     };
 
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    // Use capture phase so events fire even if the element moves under the cursor
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseup', onUp, true);
   });
 }
 
@@ -82,7 +91,10 @@ export function ensureModelMeta(bubble) {
     lineEl.className = 'ai-model-divider';
     meta.appendChild(nameEl);
     meta.appendChild(lineEl);
-    bubble.insertBefore(meta, bubble.firstChild);
+    // Insert after the drag strip
+    const strip = bubble.querySelector('.ai-ar-drag-strip');
+    const insertAfter = strip ? strip.nextSibling : bubble.firstChild;
+    bubble.insertBefore(meta, insertAfter);
   }
   const nameEl = meta.querySelector('.ai-model-name');
   return { meta, nameEl };

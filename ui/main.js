@@ -223,6 +223,24 @@ ipcMain.on('cursor-hit-test', (event, isOverElement) => {
   setWindowInteractive(isOverElement);
 });
 
+ipcMain.on('drag-start', () => {
+  if (!win || win.isDestroyed()) return;
+  // Force window interactive for the duration of a drag
+  isInteractive = true;
+  win.setIgnoreMouseEvents(false);
+});
+
+ipcMain.on('drag-end', () => {
+  if (!win || win.isDestroyed()) return;
+  // Reset so cursor poll takes over again on next tick
+  isInteractive = false;
+  if (process.platform === 'darwin') {
+    win.setIgnoreMouseEvents(false); // keep interactive briefly; poll will update
+  } else {
+    win.setIgnoreMouseEvents(false, { forward: true });
+  }
+});
+
 ipcMain.on('toggle-input-mode', (event, enabled) => {
   if (!win || win.isDestroyed()) return;
   if (enabled) {
