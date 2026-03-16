@@ -92,6 +92,7 @@
 }
 
 .command-input-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -108,6 +109,36 @@
 
 #command-overlay.active .command-input-wrap {
   animation: input-reveal 0.7s ease-out 0.7s forwards;
+}
+
+#command-drag-handle {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: rgba(0, 220, 200, 0.3);
+  font-size: 15px;
+  cursor: grab;
+  padding: 4px 5px;
+  line-height: 1;
+  user-select: none;
+  pointer-events: auto;
+  transition: color 0.2s;
+  z-index: 1;
+}
+
+#command-drag-handle:hover {
+  color: rgba(0, 220, 200, 0.75);
+}
+
+#command-drag-handle:active {
+  cursor: grabbing;
+}
+
+#command-overlay.active #command-drag-handle {
+  pointer-events: auto;
 }
 
 #command-input {

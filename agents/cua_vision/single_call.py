@@ -200,6 +200,7 @@ class SingleCallVisionEngine:
             press_key_for_duration_declaration, hold_down_key_declaration,
             release_held_key_declaration, remember_information_declaration,
             tts_speak_declaration, task_is_complete_declaration,
+            open_application_declaration,
         )
 
         buf = io.BytesIO()
@@ -217,6 +218,7 @@ class SingleCallVisionEngine:
 
         groq_tools = []
         for decl in [
+            open_application_declaration,
             type_string_declaration, press_ctrl_hotkey_declaration,
             press_alt_hotkey_declaration, go_to_element_declaration,
             click_left_click_declaration, click_double_left_click_declaration,
@@ -291,10 +293,10 @@ IMPORTANT:
 - Only interact with elements you can currently see.
 - Before choosing an action, check if the user goal is already satisfied on this screen.
 - When the task is fully complete, call `task_is_complete` and do not call any other function.
-- App-launch tasks on macOS should prefer keyboard flow:
-  1) `press_ctrl_hotkey(key="space")` (maps to Command+Space on macOS)
-  2) `type_string(string="<app name>", submit=true)`
-  3) continue the rest of the task after app opens
+- App-launch tasks on macOS: ALWAYS use `open_application(app_name="<App Name>")` first.
+  It is more reliable than Spotlight. Example: open_application("Notion"), open_application("Google Chrome").
+  After calling open_application, wait for the app to appear, then continue with the rest of the task.
+- Only fall back to `press_ctrl_hotkey(key="space")` + `type_string` if open_application fails.
 - Avoid clicking tiny menu bar Spotlight icons when shortcut launch is available.
 - Do not stop immediately after opening an app if the user asked for more actions.
 """
@@ -424,7 +426,7 @@ IMPORTANT:
         if (
             not click_type
             and name not in POSITIONING_TOOLS
-            and name not in {"tts_speak", "task_is_complete"}
+            and name not in {"tts_speak", "task_is_complete", "open_application"}
             and self.repeated_action_count >= self.max_failures_before_fallback
         ):
             await self._set_status("Task appears complete.")
@@ -491,6 +493,11 @@ IMPORTANT:
             if name == "type_string" and args.get("submit"):
                 self._raise_if_stopped()
                 await asyncio.sleep(2.0)
+
+            # open_application launches async — give the OS time to bring it up
+            if name == "open_application":
+                self._raise_if_stopped()
+                await asyncio.sleep(2.5)
 
             if name in {"tts_speak", "task_is_complete"}:
                 await self._set_status("Task complete")

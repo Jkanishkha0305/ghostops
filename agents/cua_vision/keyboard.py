@@ -164,6 +164,26 @@ def press_command_hotkey(key: str):
     pyautogui.hotkey('command', key)
 
 
+def open_application(app_name: str):
+    """Open a macOS application by name using the system `open -a` command.
+
+    More reliable than Spotlight for app launching — works even when Spotlight
+    is misconfigured or pyautogui input to Spotlight is unreliable.
+
+    Args:
+        app_name: The application name exactly as it appears in /Applications
+                  (e.g. "Notion", "Google Chrome", "Visual Studio Code")
+    """
+    import subprocess
+    import sys
+    if sys.platform == 'darwin':
+        subprocess.Popen(['open', '-a', app_name])
+    elif sys.platform == 'win32':
+        subprocess.Popen(['start', app_name], shell=True)
+    else:
+        subprocess.Popen(['xdg-open', app_name])
+
+
 def press_hotkey_combo(keys: str):
     """
     Press a multi-key combo simultaneously.

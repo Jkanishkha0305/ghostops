@@ -133,3 +133,15 @@ def get_personalization_config(settings_path: str = DEFAULT_SETTINGS_PATH) -> Tu
     with open(settings_path, "r", encoding="utf-8") as handle:
         settings = json.load(handle)
     return (settings.get("personalization", False),)
+
+
+def get_user_name(settings_path: str = DEFAULT_SETTINGS_PATH) -> str:
+    with open(settings_path, "r", encoding="utf-8") as handle:
+        settings = json.load(handle)
+    return settings.get("user_name", "")
+
+
+def get_agent_name(settings_path: str = DEFAULT_SETTINGS_PATH) -> str:
+    with open(settings_path, "r", encoding="utf-8") as handle:
+        settings = json.load(handle)
+    return settings.get("agent_name", "GhostOps")

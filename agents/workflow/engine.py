@@ -202,14 +202,23 @@ async def _load_workflow(name: str) -> list[dict]:
 async def replay(name: str, session_id: str) -> str:
     """
     Replay a workflow by name.
-    For each step: screenshot → Gemini finds element → execute CUA action → verify.
+    click/type steps → delegated to VisionAgent (correct resolution, loop detection, fallbacks).
+    open/press/navigate steps → direct subprocess/pyautogui (no vision needed).
     """
     steps = await _load_workflow(name)
     if not steps:
         return f"Workflow '{name}' not found or has no steps."
 
     print(f"[workflow] replaying '{name}': {len(steps)} steps")
-    # [GEMINI] client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+    # Lazy import to avoid circular imports; VisionAgent uses Groq vision internally
+    try:
+        from agents.cua_vision.agent import VisionAgent
+        agent = VisionAgent()
+    except Exception as exc:
+        print(f"[workflow] VisionAgent unavailable: {exc}")
+        agent = None
+
     completed = 0
 
     for step in steps:
@@ -221,47 +230,21 @@ async def replay(name: str, session_id: str) -> str:
         print(f"[workflow] step {step_num}: {action} on '{target}'")
 
         try:
-            # 1. Take screenshot
-            raw = await asyncio.to_thread(_screen._capture_raw)
+            if action == "click" and target and agent:
+                # Delegate to VisionAgent — handles screenshot + correct coords + loop detection
+                await agent.execute(f"click the {target}")
 
-            # 2. Find element coordinates (for click/type actions)
-            if action in ("click", "type") and target:
-                # [GEMINI] coord_parts = [types.Part(text=...), types.Part(inline_data=...)]
-                # [GEMINI] coord_resp = await client.aio.models.generate_content(...)
-                # [GROQ]
-                coord_prompt = (
-                    f"Find the element described as '{target}' in this screenshot.\n"
-                    "Return ONLY a JSON object: {\"x\": <int>, \"y\": <int>} "
-                    "in 1280x720 coordinate space. No markdown, no explanation."
-                )
-                coord_json = await generate_vision(
-                    prompt=coord_prompt, image_bytes=raw, max_tokens=100
-                )
-                coord_json = coord_json.strip()
-                if coord_json.startswith("```"):
-                    coord_json = coord_json.split("```")[1].lstrip("json")
-                coords = json.loads(coord_json)
-                x, y = int(coords.get("x", 640)), int(coords.get("y", 360))
-
-                import pyautogui
-                sw, sh = pyautogui.size()
-                ax, ay = int(x * sw / 1280), int(y * sh / 720)
-
-                if action == "click":
-                    await asyncio.to_thread(pyautogui.click, ax, ay)
-                elif action == "type" and value:
-                    import subprocess
-                    await asyncio.to_thread(
-                        subprocess.run, ["pbcopy"], input=value.encode(), capture_output=True
-                    )
-                    await asyncio.sleep(0.1)
-                    await asyncio.to_thread(pyautogui.hotkey, "command", "v")
+            elif action == "type" and target and agent:
+                task = f"click the {target} and type: {value}" if value else f"click the {target}"
+                await agent.execute(task)
 
             elif action == "open" and value:
                 import subprocess
                 await asyncio.to_thread(
                     subprocess.run, ["open", "-a", value], capture_output=True
                 )
+                await asyncio.sleep(1.5)  # wait for app to launch
+
             elif action in ("press", "key") and value:
                 import pyautogui
                 parts_key = [p.strip() for p in value.split("+")]
@@ -269,13 +252,14 @@ async def replay(name: str, session_id: str) -> str:
                     await asyncio.to_thread(pyautogui.press, parts_key[0])
                 else:
                     await asyncio.to_thread(pyautogui.hotkey, *parts_key)
+                await asyncio.sleep(0.3)
+
             elif action == "navigate" and value:
-                # Open URL in default browser
                 import subprocess
                 await asyncio.to_thread(subprocess.run, ["open", value], capture_output=True)
+                await asyncio.sleep(1.0)
 
             completed += 1
-            await asyncio.sleep(0.5)
 
         except Exception as exc:
             print(f"[workflow] step {step_num} failed: {exc}")

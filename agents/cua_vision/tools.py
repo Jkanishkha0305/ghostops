@@ -34,6 +34,7 @@ from agents.cua_vision.keyboard import (
     press_key_for_duration,
     hold_down_key,
     release_held_key,
+    open_application,
 )
 from core.settings import get_screen_model
 from agents.cua_vision.agentic_vision import crop_and_search_click
@@ -885,6 +886,26 @@ tts_speak_declaration = {
     },
 }
 
+open_application_declaration = {
+    "name": "open_application",
+    "description": (
+        "Open a macOS application by name using the system `open -a` command. "
+        "Use this for app-launch tasks on macOS — it is more reliable than Spotlight. "
+        "Examples: open_application('Notion'), open_application('Google Chrome'), "
+        "open_application('Visual Studio Code')."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": _with_status_text({
+            "app_name": {
+                "type": "string",
+                "description": "The application name as it appears in /Applications (e.g. 'Notion', 'Google Chrome').",
+            },
+        }),
+        "required": ["app_name"],
+    },
+}
+
 task_is_complete_declaration = {
     "name": "task_is_complete",
     "description": "Signal that the task is complete. This should be the final action.",
@@ -943,6 +964,7 @@ VISION_TOOL_MAP = {
     "task_is_complete": task_is_complete,
     "tts_speak": tts_speak,
     "find_and_click_element": find_and_click_element,
+    "open_application": open_application,
 }
 
 TOOL_CONFIG = types.ToolConfig(

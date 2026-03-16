@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 
 import websockets
 from websockets.exceptions import ConnectionClosed
-from core.settings import get_screen_size, set_screen_size
+from core.settings import get_screen_size, set_screen_size, get_user_name, get_agent_name
 
 try:
     from PIL import ImageGrab
@@ -252,6 +252,13 @@ class VisualizationServer:
                 await websocket.send(json.dumps(text))
             for dot in self.dots.values():
                 await websocket.send(json.dumps(dot))
+            # Send personalization to overlay
+            agent_name = get_agent_name()
+            user_name = get_user_name()
+            await websocket.send(json.dumps({"command": "set_model_name", "name": agent_name}))
+            if user_name:
+                await websocket.send(json.dumps({"command": "set_placeholder", "text": f"Hey {user_name} — what do you need?"}))
+
 
             async for message in websocket:
                 try:

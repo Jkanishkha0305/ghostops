@@ -17,8 +17,8 @@ import os
 
 from groq import AsyncGroq
 
-GROQ_TEXT_MODEL   = "llama-3.3-70b-versatile"
-GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_TEXT_MODEL   = "llama-3.1-8b-instant"      # 500K TPD (was llama-3.3-70b-versatile @ 100K TPD)
+GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # 500K TPD, only vision model available
 
 _client: AsyncGroq | None = None
 

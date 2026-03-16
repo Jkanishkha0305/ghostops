@@ -787,6 +787,11 @@ async function connectSocket() {
       if (payload.name) {
         overlayModelName = payload.name;
       }
+    } else if (payload.command === 'set_placeholder') {
+      const input = document.getElementById('command-input');
+      if (input && payload.text) {
+        input.placeholder = payload.text;
+      }
     } else if (payload.command === 'show_status_bubble') {
       if (window.showStatusBubble) {
         window.showStatusBubble(payload.text || 'Working...', payload.theme, payload.source);
@@ -902,6 +907,17 @@ if (platform === 'win32') {
   window.api.onCursorPosition((point) => {
     if (window.setCursorStatusPosition) {
       window.setCursorStatusPosition(point.x, point.y);
+    }
+    // Cursor-poller-driven drag: mousemove doesn't fire in focusable:false windows on macOS
+    if (window.overlayActiveDrag) {
+      const drag = window.overlayActiveDrag;
+      drag.el.style.left = `${drag.startElLeft + (point.x - drag.startCursorX)}px`;
+      drag.el.style.top = `${drag.startElTop + (point.y - drag.startCursorY)}px`;
+      if (!lastHitTestState) {
+        lastHitTestState = true;
+        window.api.reportHitTest(true);
+      }
+      return;
     }
     const isOver = isOverOverlayElement(point.x, point.y);
     if (isOver === lastHitTestState) return;

@@ -156,7 +156,15 @@ function createTray() {
       click: () => app.quit()
     }
   ]);
-  tray.setToolTip('Python-Powered Desktop Overlay');
+  try {
+    const settingsRaw = fs.readFileSync(path.join(__dirname, '..', 'settings.json'), 'utf-8');
+    const s = JSON.parse(settingsRaw);
+    const agentName = s.agent_name || 'GhostOps';
+    const userName = s.user_name ? ` • ${s.user_name}'s assistant` : '';
+    tray.setToolTip(`${agentName}${userName}`);
+  } catch (e) {
+    tray.setToolTip('GhostOps');
+  }
   tray.setContextMenu(contextMenu);
 }
 
@@ -254,7 +262,12 @@ ipcMain.on('toggle-input-mode', (event, enabled) => {
 });
 
 ipcMain.handle('get-model-name', async () => {
-  return 'GhostOps';
+  try {
+    const settingsRaw = fs.readFileSync(path.join(__dirname, '..', 'settings.json'), 'utf-8');
+    return JSON.parse(settingsRaw).agent_name || 'GhostOps';
+  } catch (e) {
+    return 'GhostOps';
+  }
 });
 
 ipcMain.handle('get-server-config', async () => {

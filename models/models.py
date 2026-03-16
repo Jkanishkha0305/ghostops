@@ -9,6 +9,7 @@ This module handles:
 import asyncio
 import json
 import os
+import re
 from collections import deque
 from typing import Any, Optional
 
@@ -598,6 +599,88 @@ async def _run_routed_agent_step(
 
 
 # ================================================================================
+# WORKFLOW RECORDING / REPLAY (overlay support)
+# ================================================================================
+
+def _detect_workflow_command(prompt: str) -> dict | None:
+    """
+    Keyword-detect workflow commands before hitting the LLM router.
+    Faster, cheaper, and more reliable for fixed phrases.
+    """
+    p = prompt.lower().strip()
+
+    # Start recording: "watch me", "start recording", "begin recording"
+    if any(phrase in p for phrase in ["watch me", "start recording", "begin recording"]):
+        return {"action": "start"}
+
+    # Stop + save: "remember this as X", "stop recording as X", "save this as X"
+    match = re.search(
+        r"(?:remember this as|save this as|stop recording.*?as|stop.*?call this|call this)\s+['\"]?([a-z0-9_\-\s]+)['\"]?",
+        p,
+    )
+    if match:
+        name = match.group(1).strip().replace(" ", "-").rstrip("-")
+        return {"action": "stop", "name": name}
+
+    # Replay: "replay X", "run X", "play back X"
+    match = re.search(
+        r"(?:replay|run workflow|play back|execute workflow)\s+['\"]?([a-z0-9_\-\s]+)['\"]?",
+        p,
+    )
+    if match:
+        name = match.group(1).strip().replace(" ", "-").rstrip("-")
+        return {"action": "replay", "name": name}
+
+    return None
+
+
+async def _handle_workflow_command(cmd: dict) -> None:
+    """Execute a workflow command detected from overlay input."""
+    from agents.workflow import engine as _wf
+
+    def _show_text(text: str):
+        tool = ROUTER_TOOL_MAP.get("direct_response")
+        if tool:
+            tool(text=text, source="workflow")
+
+    session_id = os.environ.get("FIRESTORE_SESSION_ID", "default-user")
+    action = cmd["action"]
+
+    if action == "start":
+        # [GROQ] Step extraction uses Groq vision on last frame (see workflow/engine.py)
+        # [GEMINI] Would use gemini-2.5-flash with 10 sampled frames for better accuracy
+        _wf.start_recording()
+        await _start_non_rapid_status(
+            "Recording... do your workflow, then type 'remember this as NAME'",
+            source="workflow",
+        )
+        print("[Workflow] Recording started from overlay.")
+
+    elif action == "stop":
+        name = cmd["name"]
+        print(f"[Workflow] Stopping and saving as '{name}'...")
+        await _start_non_rapid_status(f"Saving workflow '{name}'...", source="workflow")
+        # [GROQ] Uses Groq vision on last frame to extract steps as JSON
+        # [GEMINI] Would use gemini-2.5-flash with up to 10 frames for better accuracy
+        steps = await _wf.stop_and_save(name, session_id)
+        msg = f"Saved '{name}' — {len(steps)} steps recorded."
+        await _finish_non_rapid_status(msg, success=True, source="workflow")
+        _show_text(msg)
+        print(f"[Workflow] {msg}")
+
+    elif action == "replay":
+        name = cmd["name"]
+        print(f"[Workflow] Replaying '{name}'...")
+        await _start_non_rapid_status(f"Replaying '{name}'...", source="workflow")
+        # [GROQ] Uses Groq vision to locate each element by description on live screen
+        # [GEMINI] Would use gemini-2.5-flash for more accurate element location
+        result = await _wf.replay(name, session_id)
+        await _finish_non_rapid_status(result, success=True, source="workflow")
+        _show_text(result)
+        print(f"[Workflow] {result}")
+
+
+# ================================================================================
 # MAIN ENTRY POINT
 # ================================================================================
 
@@ -613,6 +696,12 @@ async def call_gemini(user_prompt: str, rapid_response_model: str, screen_model:
     )
 
     _append_rapid_history("user", user_prompt, "user")
+
+    # Handle workflow commands directly — no LLM routing needed
+    workflow_cmd = _detect_workflow_command(user_prompt)
+    if workflow_cmd:
+        await _handle_workflow_command(workflow_cmd)
+        return
 
     chain_steps: list[dict[str, Any]] = []
     seen_step_signatures: dict[tuple[str, str], int] = {}

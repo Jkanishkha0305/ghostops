@@ -41,41 +41,40 @@ function _attachDrag(root, strip) {
 
     console.log('[drag] mousedown start');
 
-    // Force window interactive through the entire drag (bypasses cursor poll)
-    window.overlaySetDragging?.(true);
-    window.api?.startDrag?.();
-
-    // Resolve actual position, flattening any CSS transforms
+    // Flatten any CSS transforms before recording position
     const rect = root.getBoundingClientRect();
     const origLeft = rect.left;
     const origTop = rect.top;
-
     root.style.transform = 'none';
     root.style.setProperty('--text-translate-x', '0%');
     root.style.setProperty('--text-translate-y', '0%');
     root.style.left = `${origLeft}px`;
     root.style.top = `${origTop}px`;
 
-    const startX = e.clientX;
-    const startY = e.clientY;
     strip.classList.add('dragging');
 
-    const onMove = (ev) => {
-      root.style.left = `${origLeft + ev.clientX - startX}px`;
-      root.style.top = `${origTop + ev.clientY - startY}px`;
+    // Register with cursor-poller-driven drag.
+    // On macOS, mousemove does not fire in a focusable:false Electron window during
+    // a drag gesture — the cursor poller (getCursorScreenPoint every 30ms) does.
+    window.overlayActiveDrag = {
+      el: root,
+      startCursorX: e.clientX,
+      startCursorY: e.clientY,
+      startElLeft: origLeft,
+      startElTop: origTop,
     };
+    window.overlaySetDragging?.(true);
+    window.api?.startDrag?.();
 
     const onUp = () => {
       console.log('[drag] mouseup end');
       strip.classList.remove('dragging');
+      window.overlayActiveDrag = null;
       window.overlaySetDragging?.(false);
       window.api?.endDrag?.();
-      document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
     };
 
-    // Use capture phase so events fire even if the element moves under the cursor
-    document.addEventListener('mousemove', onMove, true);
     document.addEventListener('mouseup', onUp, true);
   });
 }

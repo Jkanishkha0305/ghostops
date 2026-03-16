@@ -5,6 +5,7 @@ const commandLogo = document.getElementById('command-logo');
 const commandLogoSpin = document.getElementById('command-logo-spin');
 const commandBar = document.getElementById('command-bar');
 const commandInputWrap = commandOverlay?.querySelector('.command-input-wrap');
+const commandDragHandle = document.getElementById('command-drag-handle');
 const MAX_INPUT_HEIGHT = 180;
 let overlayActive = false;
 let overlayClosing = false;
@@ -14,6 +15,9 @@ let lastSubmittedAt = 0;
 let hideOverlayTimeout = null;
 let logoSyncRaf = null;
 let logoSyncUntil = 0;
+// Persists bar position across opens after user drags it
+let barDragLeft = null;
+let barDragTop = null;
 
 function getElementTranslateY(el) {
   if (!el) return 0;
@@ -167,6 +171,8 @@ function showCommandOverlay() {
   commandInput.value = '';
   resizeInput();
   setInputMode(false);
+  // Re-apply drag position (overrides the CSS-based centering)
+  applyBarDragPosition();
   startLogoSyncLoop(1800);
   setTimeout(() => commandInput.focus(), 20);
 }
@@ -368,7 +374,67 @@ function restoreCommandBar() {
       startLogoSyncLoop(700);
     }
   });
+  // Re-apply drag position so bar stays where the user put it
+  applyBarDragPosition();
 }
+
+// ── Command Bar Drag ─────────────────────────────────────────────────────────
+// Uses the same cursor-poller-driven drag as the AI response bubbles (renderer.js
+// reads window.overlayActiveDrag every 30ms via getCursorScreenPoint).
+
+function applyBarDragPosition() {
+  if (barDragLeft === null || !commandBar) return;
+  commandBar.style.left = `${barDragLeft}px`;
+  commandBar.style.top = `${barDragTop}px`;
+  commandBar.style.transform = 'none';
+  // Reposition logo to stay left of the bar (same offset as the CSS animation final state)
+  if (commandLogo) {
+    const barRect = commandBar.getBoundingClientRect();
+    const barCenterX = barRect.left + barRect.width / 2;
+    // Logo is 70px wide; transform has translate(-50% - 235px) = -35 - 235 = -270px offset
+    // So: style.left = barCenterX + 35 makes visual_center = barCenterX - 235
+    commandLogo.style.left = `${barCenterX + 35}px`;
+    commandLogo.style.transform = 'translate3d(calc(-50% - 235px), calc(-50% - 43px), 0) scale(0.45)';
+  }
+  syncCommandLogoVerticalPosition();
+}
+
+commandDragHandle?.addEventListener('mousedown', (e) => {
+  if (!overlayActive) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Flatten bar to absolute pixel position (left/top = visual edges, no transform)
+  const rect = commandBar.getBoundingClientRect();
+  const startLeft = rect.left;
+  const startTop = rect.top;
+  commandBar.style.left = `${startLeft}px`;
+  commandBar.style.top = `${startTop}px`;
+  commandBar.style.transform = 'none';
+
+  // renderer.js cursor-poller updates drag.el.style.left/top on each 30ms tick
+  window.overlayActiveDrag = {
+    el: commandBar,
+    startCursorX: e.clientX,
+    startCursorY: e.clientY,
+    startElLeft: startLeft,
+    startElTop: startTop,
+  };
+  window.overlaySetDragging?.(true);
+  window.api?.startDrag?.();
+
+  const onUp = () => {
+    window.overlayActiveDrag = null;
+    window.overlaySetDragging?.(false);
+    window.api?.endDrag?.();
+    // Persist position for next open
+    barDragLeft = parseFloat(commandBar.style.left) || startLeft;
+    barDragTop = parseFloat(commandBar.style.top) || startTop;
+    applyBarDragPosition();
+    document.removeEventListener('mouseup', onUp, true);
+  };
+  document.addEventListener('mouseup', onUp, true);
+});
 
 window.restoreCommandBar = restoreCommandBar;
 window.overlayShowCommandOverlay = showCommandOverlay;
@@ -413,8 +479,11 @@ if (window.api?.onOverlayImage) {
     if (window.overlaySend) {
       window.overlaySend({ event: 'capture_screenshot' });
     }
-    // Small delay to ensure screenshot is taken before overlay appears
+    // Small delay to ensure screenshot is taken before overlay appears.
+    // Always reset first so the shortcut re-shows the bar even if overlayActive
+    // is still true from a previous collapsed-but-not-closed state (e.g. during recording).
     setTimeout(() => {
+      forceResetCommandOverlay();
       showCommandOverlay();
     }, 50);
   });

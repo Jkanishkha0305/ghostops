@@ -157,9 +157,22 @@ audio_out_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
 
 def build_system_prompt(memory_context: str) -> str:
+    try:
+        from core.settings import get_user_name, get_agent_name, get_personalization_config
+        user_name = get_user_name()
+        agent_name = get_agent_name()
+        personalization = get_personalization_config()[0]
+    except Exception:
+        user_name, agent_name, personalization = "", "GhostOps", ""
+
+    identity = f"You are {agent_name}, an AI desktop agent" if agent_name else "You are GhostOps, an AI desktop agent"
+    user_clause = f" Your user's name is {user_name}. Address them by name naturally." if user_name else ""
+    persona_clause = f" {personalization}" if personalization else ""
+
     base = (
-        "You are GhostOps, an AI desktop agent with persistent memory, on-demand screen vision, "
-        "workflow recording/replay, and the ability to delegate complex tasks to specialized AI agents. "
+        f"{identity} with persistent memory, on-demand screen vision, "
+        "workflow recording/replay, and the ability to delegate complex tasks to specialized AI agents."
+        f"{user_clause}{persona_clause}\n"
         "Use get_screen_context to see the user's screen whenever it would help. "
         "You can control the Mac using: click_at, type_text, open_app, press_key. "
         "Always call get_screen_context before using click_at. "
