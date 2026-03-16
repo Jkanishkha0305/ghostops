@@ -423,3 +423,89 @@ if (window.api?.onOverlayImage) {
 window.overlayHideCommandOverlay = hideCommandOverlay;
 
 resizeInput();
+
+// ── Voice Input (STT via Web Speech API) ────────────────────────────────────
+const commandMic = document.getElementById('command-mic');
+let recognition = null;
+let micActive = false;
+
+function startVoiceInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('[voice] SpeechRecognition not available in this environment');
+    return;
+  }
+  if (micActive) {
+    stopVoiceInput();
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    micActive = true;
+    commandMic?.classList.add('mic-active');
+    if (commandInput) commandInput.placeholder = 'Listening...';
+  };
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    let finalTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += t;
+      } else {
+        interim += t;
+      }
+    }
+    if (commandInput) {
+      commandInput.value = finalTranscript || interim;
+      resizeInput();
+    }
+    if (finalTranscript) {
+      stopVoiceInput();
+      // Small delay so the user can see the transcription before it sends
+      setTimeout(() => sendCommand(), 300);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    console.error('[voice] STT error:', e.error);
+    stopVoiceInput();
+    if (commandInput) commandInput.placeholder = 'GhostOps — what do you need?';
+  };
+
+  recognition.onend = () => {
+    micActive = false;
+    commandMic?.classList.remove('mic-active');
+    if (commandInput) commandInput.placeholder = 'GhostOps — what do you need?';
+  };
+
+  recognition.start();
+}
+
+function stopVoiceInput() {
+  if (recognition) {
+    try { recognition.stop(); } catch (_) {}
+    recognition = null;
+  }
+  micActive = false;
+  commandMic?.classList.remove('mic-active');
+}
+
+commandMic?.addEventListener('click', () => {
+  if (!overlayActive) return;
+  startVoiceInput();
+});
+
+// Stop recognition when overlay closes
+const _origHideCommandOverlay = window.overlayHideCommandOverlay;
+window.overlayHideCommandOverlay = function () {
+  stopVoiceInput();
+  _origHideCommandOverlay?.();
+};

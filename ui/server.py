@@ -22,7 +22,7 @@ class VisualizationServer:
     INVERTED_PANEL_DARK_THRESHOLD = 45
     STATUS_INVERTED_PANEL_DARK_THRESHOLD = 132
 
-    def __init__(self, host="127.0.0.1", port=8765, on_overlay_input=None, on_capture_screenshot=None, on_stop_all=None):
+    def __init__(self, host="127.0.0.1", port=8765, on_overlay_input=None, on_capture_screenshot=None, on_stop_all=None, on_tts_speak=None):
         self.host = host
         self.port = port
         self.clients = set()
@@ -33,6 +33,7 @@ class VisualizationServer:
         self.on_overlay_input = on_overlay_input
         self.on_capture_screenshot = on_capture_screenshot
         self.on_stop_all = on_stop_all
+        self.on_tts_speak = on_tts_speak
         self._last_screenshot = None
         self._last_screenshot_rgb = None
         self._last_capture_backend = "none"
@@ -360,6 +361,13 @@ class VisualizationServer:
                     if event == "stop_all":
                         if self.on_stop_all:
                             result = self.on_stop_all()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        continue
+                    if event == "tts_speak":
+                        text = payload.get("text", "")
+                        if text and self.on_tts_speak:
+                            result = self.on_tts_speak(text)
                             if asyncio.iscoroutine(result):
                                 await result
                         continue

@@ -165,6 +165,16 @@ app.whenReady().then(() => {
     app.dock.hide();
   }
 
+  // Allow microphone access for voice input (Web Speech API)
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'microphone' || permission === 'audioCapture') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   createWindow();
   createTray();
   registerShortcut('Command+Shift+Space', 'show overlay', () => {

@@ -6,6 +6,7 @@ from core.settings import set_host_and_port, set_screen_size, get_model_configs,
 
 from models.models import call_gemini, store_screenshot
 from agents.screen.tools import stop_all_actions
+from integrations.audio.tts import tts_speak
 from agents.cua_vision.tools import (
     reset_state as reset_cua_vision_state,
     request_stop as request_cua_vision_stop,
@@ -89,12 +90,18 @@ async def main():
             task = asyncio.create_task(_run_overlay_task(text))
             current_task = task
 
+    def handle_tts_speak(text: str):
+        """Speak text via ElevenLabs TTS in a background thread."""
+        import threading
+        threading.Thread(target=tts_speak, args=(text,), daemon=True).start()
+
     server = VisualizationServer(
         host=host,
         port=port,
         on_overlay_input=handle_overlay_input,
         on_capture_screenshot=store_screenshot,
-        on_stop_all=stop_all
+        on_stop_all=stop_all,
+        on_tts_speak=handle_tts_speak,
     )
     await server.start()
     print(f"Visualization server listening at ws://{host}:{port}")

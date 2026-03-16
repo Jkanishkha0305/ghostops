@@ -30,6 +30,29 @@ let isOverlayTextSelectionDragging = false;
 let overlayModelName = 'GhostOps';
 let lastDirectResponseTheme = null;
 
+// Expose drag state setter so overlay_text.js drag handlers can reach it
+window.overlaySetDragging = (val) => { isOverlayTextSelectionDragging = !!val; };
+
+// ── TTS (ElevenLabs via Python backend) ─────────────────────────────────────
+let ttsMuted = false;
+
+function _speak(text) {
+  if (ttsMuted || !text?.trim()) return;
+  // Delegate to Python backend which calls ElevenLabs tts_speak()
+  if (window.overlaySend) {
+    window.overlaySend({ event: 'tts_speak', text: text.trim() });
+  }
+}
+
+// Cmd+Shift+M (or Ctrl+Shift+M) toggles TTS mute
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'm') {
+    e.preventDefault();
+    ttsMuted = !ttsMuted;
+    console.log('[tts] muted:', ttsMuted);
+  }
+});
+
 function applyDirectResponseHeightCap(el, bubble) {
   if (!el || !bubble) return;
   const rect = el.getBoundingClientRect();
@@ -333,6 +356,10 @@ function startFlush(entry, fullText) {
     if (index >= tokens.length) {
       clearFlush(entry);
       bubble?.classList.add('ai-meta-visible');
+      // Speak the completed response (only for direct_response to avoid narrating annotations)
+      if (entry.id === DIRECT_RESPONSE_ID) {
+        _speak(fullText);
+      }
       return;
     }
     textEl.textContent += tokens[index];
