@@ -580,7 +580,6 @@ python app.py  # should print "Overlay client connected"
 
 GhostOps is built on the shoulders of:
 
-- **[CLOVIS](https://github.com/original/clovis)** — The Electron overlay architecture, canvas rendering system, and CUA vision loop. Core UI and agent dispatch design.
 - **[browser-use](https://github.com/browser-use/browser-use)** — Browser automation framework
 - **[Gemini Live API](https://ai.google.dev/gemini-api/docs/live)** — Real-time voice streaming
 - **[Google GenAI SDK](https://ai.google.dev)** — Multimodal AI backbone powering all agents
@@ -595,7 +594,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Built with 👻 + ☕ in 72 hours for the Gemini Live Agent Challenge 2026**
+**Built with 👻 + ☕ for the Gemini Live Agent Challenge 2026**
 
 *GhostOps — because the best interface is the one that's invisible*
 
