@@ -101,6 +101,7 @@
   gap: 12px;
   padding: 6px 14px 6px 16px;
   border-radius: 999px;
+  overflow: hidden;
   background:
     linear-gradient(rgba(8, 14, 30, 0.98), rgba(8, 14, 30, 0.98)) padding-box,
     linear-gradient(135deg, rgba(0, 220, 190, 0.75) 0%, rgba(0, 120, 255, 0.55) 50%, rgba(0, 220, 190, 0.35) 100%) border-box;
@@ -108,22 +109,10 @@
   box-shadow:
     0 0 18px rgba(0, 200, 180, 0.35),
     0 0 50px rgba(0, 100, 255, 0.18),
-    0 0 90px rgba(0, 200, 180, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   opacity: 0;
   transform: translate3d(0, -50%, 0) scaleX(0.85) scaleY(0.95);
   transform-origin: left center;
-  backdrop-filter: blur(20px) saturate(160%);
-}
-
-.command-input-wrap::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 999px;
-  background: radial-gradient(ellipse at 30% 50%, rgba(0, 220, 190, 0.07) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 #command-overlay.active .command-input-wrap {
@@ -331,25 +320,6 @@
     opacity: 0;
     transform: translate3d(0, 8px, 0) scale(0.98);
   }
-}
-
-/* ── Ambient glow haze behind the bar ──────────────────────────── */
-#command-bar::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 140%;
-  height: 300%;
-  background: radial-gradient(ellipse at center,
-    rgba(0, 180, 160, 0.07) 0%,
-    rgba(0, 80, 200, 0.04) 45%,
-    transparent 70%);
-  pointer-events: none;
-  z-index: -1;
-  border-radius: 50%;
-  filter: blur(8px);
 }
 
 /* ── Gentle pulse ring on the logo ─────────────────────────────── */

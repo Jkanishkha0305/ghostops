@@ -423,7 +423,17 @@ commandDragHandle?.addEventListener('mousedown', (e) => {
   window.overlaySetDragging?.(true);
   window.api?.startDrag?.();
 
+  // Sync logo position every frame while dragging so it follows the bar in real-time
+  let dragRaf = null;
+  const syncLogoWhileDragging = () => {
+    if (!window.overlayActiveDrag) return;
+    applyBarDragPosition();
+    dragRaf = requestAnimationFrame(syncLogoWhileDragging);
+  };
+  dragRaf = requestAnimationFrame(syncLogoWhileDragging);
+
   const onUp = () => {
+    cancelAnimationFrame(dragRaf);
     window.overlayActiveDrag = null;
     window.overlaySetDragging?.(false);
     window.api?.endDrag?.();
