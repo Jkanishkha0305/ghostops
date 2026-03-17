@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/GhostOps-AI%20Desktop%20Agent-00C8B4?style=for-the-badge&logo=ghost&logoColor=white" alt="GhostOps"/>
+<img src="assets/GhostOps.png" alt="GhostOps" width="100%"/>
+
 
 # 👻 GhostOps
 
