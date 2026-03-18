@@ -23,3 +23,5 @@ services:
         type: SECRET
       - key: AI_PROVIDER
         value: do
+      - key: CLOUD_RUN_URL
+        value: https://clownfish-app-dqd9h.ondigitalocean.app
