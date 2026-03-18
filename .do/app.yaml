@@ -1,0 +1,25 @@
+name: ghostops-backend
+region: nyc
+services:
+  - name: ghostops-api
+    dockerfile_path: Dockerfile
+    github:
+      repo: Jkanishkha0305/ghostops
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    routes:
+      - path: /
+    envs:
+      - key: GEMINI_API_KEY
+        value: "${GEMINI_API_KEY}"
+        type: SECRET
+      - key: GOOGLE_CLOUD_PROJECT
+        value: citylens-hackathon
+      - key: GRADIENT_MODEL_ACCESS_KEY
+        value: "${GRADIENT_MODEL_ACCESS_KEY}"
+        type: SECRET
+      - key: AI_PROVIDER
+        value: do
