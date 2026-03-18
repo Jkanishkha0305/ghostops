@@ -10,10 +10,7 @@ import subprocess
 from typing import Optional
 
 from dotenv import load_dotenv
-# [GEMINI] from google import genai
-# [GEMINI] from google.genai import types
-# [GROQ] using core.groq_provider instead
-from core.groq_provider import generate_text
+from core.provider import generate_text
 
 load_dotenv()
 
@@ -37,7 +34,7 @@ Rules:
 class CLIAgent:
     def __init__(self, model_name: str = "gemini-2.5-flash"):
         # [GEMINI] self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-        self.model_name = model_name  # kept for interface compat, Groq model set in groq_provider
+        self.model_name = model_name
 
     async def _generate_command(self, task: str) -> Optional[str]:
         """Ask Groq to produce a shell command for the task."""

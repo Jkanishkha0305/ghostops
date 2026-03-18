@@ -189,8 +189,7 @@ class SingleCallVisionEngine:
         self._thinking_index += 1
         await self._set_status(thinking_text)
 
-        # [GROQ] Use Groq vision + function calling instead of Gemini
-        from core.groq_provider import generate_vision_with_tools
+        from core.provider import generate_vision_with_tools
         from agents.cua_vision.tools import (
             type_string_declaration, press_ctrl_hotkey_declaration,
             press_alt_hotkey_declaration, go_to_element_declaration,

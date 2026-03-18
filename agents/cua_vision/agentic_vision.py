@@ -268,7 +268,7 @@ Rules:
     _check_stop(should_stop)
     # [GROQ] Replace Gemini vision call with Groq
     import asyncio, io as _io
-    from core.groq_provider import generate_vision
+    from core.provider import generate_vision
     buf = _io.BytesIO()
     cropped.convert("RGB").save(buf, format="JPEG", quality=85)
     raw_text = asyncio.get_event_loop().run_until_complete(

@@ -26,11 +26,8 @@ import os
 import time
 from typing import Any
 
-# [GEMINI] from google import genai
-# [GEMINI] from google.genai import types
 from dotenv import load_dotenv
-# [GROQ]
-from core.groq_provider import generate_vision
+from core.provider import generate_vision
 
 from desktop import screen as _screen
 

@@ -150,7 +150,7 @@ Return a bounding box for the {element_description}. Do NOT output any words:
 
         # [GROQ] Replace Gemini vision call with Groq
         import asyncio as _asyncio, io as _io
-        from core.groq_provider import generate_vision
+        from core.provider import generate_vision
         buf = _io.BytesIO()
         screenshot.convert("RGB").save(buf, format="JPEG", quality=85)
         raw_text = _asyncio.get_event_loop().run_until_complete(

@@ -292,10 +292,7 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, session_id: str) -> str
         try:
             raw = await asyncio.to_thread(_screen._capture_raw)
             _screen.cached_screenshot_raw = raw
-            # [GEMINI] client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-            # [GEMINI] resp = await client.aio.models.generate_content(model="gemini-2.5-flash", ...)
-            # [GROQ]
-            from core.groq_provider import generate_vision
+            from core.provider import generate_vision
             return await generate_vision(
                 prompt="Describe what's on this screen in 2-3 sentences.",
                 image_bytes=raw,

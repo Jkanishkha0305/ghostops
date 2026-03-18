@@ -171,7 +171,7 @@ class VisionAgent:
         # [GEMINI] response = await self.client.aio.models.generate_content(
         # [GEMINI]     model=self.model_name, contents=[prompt, screenshot, model_prompt], config=self.analysis_config)
         # [GROQ]
-        from core.groq_provider import generate_vision
+        from core.provider import generate_vision
         import io
         screenshot_bytes = io.BytesIO()
         screenshot.save(screenshot_bytes, format="JPEG")
@@ -224,7 +224,7 @@ class VisionAgent:
 
                     # [GROQ] Replace Gemini vision call with Groq
                     import io as _io
-                    from core.groq_provider import generate_vision
+                    from core.provider import generate_vision
                     buf = _io.BytesIO()
                     screenshot.convert("RGB").save(buf, format="JPEG", quality=75)
                     result_text = await generate_vision(

@@ -24,7 +24,7 @@ class ScreenAgent:
     - Direct text responses for simple queries
     """
 
-    def __init__(self, model_client=None, model_name: str = "groq/llama-4-scout", config=None):
+    def __init__(self, model_client=None, model_name: str = "gemini-2.5-flash", config=None):
         """
         Initialize the GhostOps agent.
 
@@ -53,7 +53,7 @@ class ScreenAgent:
         try:
             await set_model_name(self.model_name)
 
-            from core.groq_provider import generate_vision_with_tools
+            from core.provider import generate_vision_with_tools
             from agents.screen.tools import (
                 draw_bounding_box_declaration,
                 draw_point_declaration,
@@ -65,32 +65,17 @@ class ScreenAgent:
                 destroy_text_declaration,
             )
 
-            def _permissive_props(props: dict) -> dict:
-                out = {}
-                for k, v in props.items():
-                    p = copy.deepcopy(v)
-                    if p.get("type") in ("boolean", "number", "integer"):
-                        p.pop("type", None)
-                    out[k] = p
-                return out
-
-            def _to_groq_tool(decl) -> dict:
-                params = copy.deepcopy(decl.get("parameters", {}))
-                if "properties" in params:
-                    params["properties"] = _permissive_props(params["properties"])
-                return {"type": "function", "function": {"name": decl["name"], "description": decl.get("description", ""), "parameters": params}}
-
+            # Use raw declaration dicts directly — gemini_provider handles conversion
             declarations = [
-                draw_bounding_box_declaration,
-                draw_point_declaration,
-                create_text_declaration,
-                direct_response_declaration,
-                create_text_for_box_declaration,
-                clear_screen_declaration,
-                destroy_box_declaration,
-                destroy_text_declaration,
+                copy.deepcopy(draw_bounding_box_declaration),
+                copy.deepcopy(draw_point_declaration),
+                copy.deepcopy(create_text_declaration),
+                copy.deepcopy(direct_response_declaration),
+                copy.deepcopy(create_text_for_box_declaration),
+                copy.deepcopy(clear_screen_declaration),
+                copy.deepcopy(destroy_box_declaration),
+                copy.deepcopy(destroy_text_declaration),
             ]
-            groq_tools = [_to_groq_tool(d) for d in declarations]
 
             image_bytes = b""
             if screenshot:
@@ -105,7 +90,7 @@ class ScreenAgent:
                 system=system_part,
                 user_text=user_part,
                 image_bytes=image_bytes,
-                tools=groq_tools,
+                tools=declarations,
             )
 
             for tc in tool_calls:

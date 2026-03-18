@@ -849,6 +849,43 @@ async def call_gemini(user_prompt: str, rapid_response_model: str, screen_model:
 
 
 # ================================================================================
+# ADK ENTRY POINT (replaces manual Groq router with ADK orchestrator)
+# ================================================================================
+
+async def call_adk(user_prompt: str):
+    """
+    ADK-powered entry point. Replaces the manual two-tier Groq router with
+    Google ADK multi-agent orchestration powered by Gemini 2.5 Flash.
+    """
+    from agents.adk_orchestrator import run_adk
+    from agents.screen.tools import direct_response
+
+    _append_rapid_history("user", user_prompt, "user")
+
+    # Fast-path: handle workflow commands without LLM
+    workflow_cmd = _detect_workflow_command(user_prompt)
+    if workflow_cmd:
+        await _handle_workflow_command(workflow_cmd)
+        return
+
+    try:
+        result = await run_adk(user_prompt)
+        if result:
+            _append_rapid_history("assistant", result, "adk")
+            # If the ADK tool already showed a response (via answer_directly/
+            # annotate_screen/etc.), the overlay already has it. But if we got
+            # a final text that wasn't shown, display it now.
+            # The answer_directly tool calls direct_response, so avoid
+            # double-showing. We only show if the result looks like a final
+            # summary from a non-answer tool.
+    except Exception as exc:
+        error_text = f"Sorry, something went wrong: {exc}"
+        direct_response(text=error_text, source="rapid_response")
+        _append_rapid_history("assistant", error_text, "adk")
+        print(f"[ADK] Error: {exc}")
+
+
+# ================================================================================
 # GEMINI MODEL CLASS
 # ================================================================================
 
@@ -909,7 +946,7 @@ class GeminiModel:
         # [GEMINI]     model=self.rapid_response_model, contents=[prompt], config=self.router_config)
         # [GROQ]
         try:
-            from core.groq_provider import generate_text
+            from core.provider import generate_text
             _ROUTER_SYSTEM = (
                 "You are a desktop assistant router. Given a user request, choose the best agent.\n"
                 "Return ONLY a JSON object — no markdown, no explanation:\n"
@@ -1040,9 +1077,9 @@ class GeminiModel:
         Uses Groq vision to avoid Gemini quota exhaustion.
         """
         import io
-        from core.groq_provider import generate_vision
+        from core.provider import generate_vision
 
-        print("[ScreenJudge] Capturing context from screenshot via Groq...")
+        print("[ScreenJudge] Capturing context from screenshot via DO...")
         focus_text = _clean_text(focus, "", max_len=200)
         judge_prompt = (
             "You are Screen Judge for a computer-use orchestrator.\n"
@@ -1082,7 +1119,7 @@ class GeminiModel:
         Avoids Gemini quota by routing through Groq llama-4-scout.
         """
         import io
-        from core.groq_provider import generate_vision_with_tools
+        from core.provider import generate_vision_with_tools
         from agents.screen.tools import (
             draw_bounding_box_declaration,
             draw_point_declaration,

@@ -4,7 +4,7 @@ import time
 from PIL import ImageGrab
 from core.settings import set_host_and_port, set_screen_size, get_model_configs, get_screen_size
 
-from models.models import call_gemini, store_screenshot
+from models.models import call_adk, store_screenshot
 from agents.screen.tools import stop_all_actions
 from integrations.audio.tts import tts_speak
 from agents.cua_vision.tools import (
@@ -60,7 +60,7 @@ async def main():
     async def _run_overlay_task(text: str):
         nonlocal current_task
         try:
-            await call_gemini(text, rapid_response_model, screen_model)
+            await call_adk(text)
         except asyncio.CancelledError:
             print("Active task cancelled.")
         except Exception as exc:
@@ -96,8 +96,8 @@ async def main():
         threading.Thread(target=tts_speak, args=(text,), daemon=True).start()
 
     async def handle_stt_audio(audio_bytes: bytes, mime_type: str) -> str:
-        """Transcribe audio via Groq Whisper and return transcript."""
-        from core.groq_provider import transcribe_audio
+        """Transcribe audio via Gemini's native audio understanding."""
+        from core.provider import transcribe_audio
         ext = "webm" if "webm" in mime_type else "ogg" if "ogg" in mime_type else "wav"
         filename = f"stt_input.{ext}"
         try:
@@ -115,6 +115,11 @@ async def main():
         on_tts_speak=handle_tts_speak,
         on_stt_audio=handle_stt_audio,
     )
+
+    # Initialize ADK orchestrator with server reference
+    from agents.adk_orchestrator import init_adk
+    init_adk(server)
+
     await server.start()
     print(f"Visualization server listening at ws://{host}:{port}")
     print("Waiting for overlay client connection...")
