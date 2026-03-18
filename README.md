@@ -9,7 +9,8 @@
 
 [![DigitalOcean Gradient AI](https://img.shields.io/badge/DigitalOcean%20Gradient%E2%84%A2%20AI-Serverless%20Inference-0080FF?style=flat-square&logo=digitalocean&logoColor=white)](https://docs.digitalocean.com/products/gradient-ai-platform/)
 [![Gemini Live API](https://img.shields.io/badge/Gemini%20Live%20API-Voice%20Streaming-4285F4?style=flat-square&logo=google&logoColor=white)](https://ai.google.dev)
-[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Run%20%2B%20Firestore-4285F4?style=flat-square&logo=googlecloud&logoColor=white)](https://cloud.google.com)
+[![DO App Platform](https://img.shields.io/badge/DigitalOcean-App%20Platform-0080FF?style=flat-square&logo=digitalocean&logoColor=white)](https://clownfish-app-dqd9h.ondigitalocean.app)
+[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Firestore%20%2B%20Voice-4285F4?style=flat-square&logo=googlecloud&logoColor=white)](https://cloud.google.com)
 [![Electron](https://img.shields.io/badge/Electron-Overlay%20UI-47848F?style=flat-square&logo=electron&logoColor=white)](https://electronjs.org)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
@@ -66,6 +67,7 @@ GhostOps is built on **DigitalOcean Gradient AI** as its primary AI infrastructu
 | **openai-gpt-4o (via DO)** | Vision model for screenshot analysis, screen understanding, element detection, and GUI automation |
 | **OpenAI-Compatible API** | Drop-in integration via the standard `openai` Python SDK, pointing at DO's inference endpoint |
 | **Multi-Model Catalog** | Access to 30+ models (Claude, GPT, Llama, DeepSeek, Nemotron) through a single endpoint |
+| **App Platform** | Backend API deployed on DO App Platform — auto-scaling, zero-ops hosting ([Live](https://clownfish-app-dqd9h.ondigitalocean.app/health)) |
 
 ### Architecture with DO Gradient AI
 
@@ -80,6 +82,13 @@ User Input (text or voice)
 |  llama3.3-70b    --> Agent Router (classify intent) |
 |  openai-gpt-4o   --> Vision (screen understanding)  |
 |  llama3.3-70b    --> CLI Agent (command generation)  |
++--------+------------------------------------------+
+         |
+         v
++---------------------------------------------------+
+|  DO App Platform — Backend API                     |
+|  https://clownfish-app-dqd9h.ondigitalocean.app   |
+|  FastAPI (vision, memory, health)                   |
 +--------+------------------------------------------+
          |
          v
@@ -125,12 +134,13 @@ User Input (text or voice)
 |  |  +----------+ +----------+ +----------+ +----------+             |   |
 |  +------------------------------------------------------------------+   |
 |                                                                          |
-|  +------------------+    +------------------------------------------+   |
-|  |  DO Gradient AI  |    |  Google Cloud                             |   |
-|  |  Serverless      |    |  +- Firestore  (session memory)           |   |
-|  |  Inference       |    |  +- Cloud Run  (backend API)              |   |
-|  |  (vision + text) |    |  +- Gemini Live API (voice streaming)     |   |
-|  +------------------+    +------------------------------------------+   |
+|  +------------------+    +------------------+  +-------------------+   |
+|  |  DO Gradient AI  |    |  DO App Platform |  |  Google Cloud     |   |
+|  |  Serverless      |    |  Backend API     |  |  +- Firestore     |   |
+|  |  Inference       |    |  (FastAPI)       |  |  |  (memory)      |   |
+|  |  (vision + text) |    |  /vision /memory |  |  +- Gemini Live   |   |
+|  +------------------+    +------------------+  |  |  (voice)       |   |
+|                                                 +-------------------+   |
 +--------------------------------------------------------------------------+
 ```
 
@@ -219,7 +229,7 @@ User: "remember this             Saved to                   Screenshot ->
 | **Screenshot** | PIL ImageGrab + mss | macOS-native screen capture |
 | **Mouse/KB** | pyautogui | Cross-platform desktop control |
 | **Memory** | Google Cloud Firestore | Real-time, serverless, persistent sessions |
-| **Backend** | FastAPI on Google Cloud Run | Auto-scaling serverless compute |
+| **Backend** | FastAPI on **DO App Platform** | Auto-scaling, zero-ops hosting on DigitalOcean |
 | **TTS** | ElevenLabs (optional) | Natural voice output |
 | **Language** | Python 3.13 + Node.js 18+ | Backend + UI |
 
@@ -534,8 +544,11 @@ ghostops/
 |   +-- package.json              <-- Electron + forge dependencies
 |
 +-- backend/
-|   +-- main.py                   <-- FastAPI backend (Cloud Run)
+|   +-- main.py                   <-- FastAPI backend (DO App Platform)
 |   +-- memory.py                 <-- Firestore memory read/write
+|
++-- .do/
+|   +-- app.yaml                  <-- DO App Platform deployment spec
 |
 +-- desktop/
 |   +-- screen.py                 <-- Screenshot capture (PIL/mss)
@@ -552,23 +565,28 @@ ghostops/
 
 ## Cloud Deployment
 
-### Deploy the backend
+### Backend on DigitalOcean App Platform
 
+The backend is deployed on **DigitalOcean App Platform** with auto-deploy on push:
+
+**Live URL:** [https://clownfish-app-dqd9h.ondigitalocean.app](https://clownfish-app-dqd9h.ondigitalocean.app/health)
+
+The app spec is in `.do/app.yaml`. To deploy your own:
+
+1. Fork this repo
+2. Go to [DigitalOcean App Platform](https://cloud.digitalocean.com/apps) -> Create App
+3. Connect your GitHub repo, select `main` branch
+4. It auto-detects the `Dockerfile` and deploys
+5. Add env vars: `AI_PROVIDER=do`, `GRADIENT_MODEL_ACCESS_KEY`, `GEMINI_API_KEY`
+
+Or via CLI:
 ```bash
-# Authenticate with Google Cloud
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-
-# Enable required APIs
-gcloud services enable run.googleapis.com firestore.googleapis.com
-
-# Deploy
-bash deploy/deploy.sh
+doctl apps create --spec .do/app.yaml
 ```
 
-After deployment, copy the Cloud Run URL into your `.env`:
+Then set the live URL in your `.env`:
 ```env
-CLOUD_RUN_URL=https://ghostops-backend-xxxx-uc.a.run.app
+CLOUD_RUN_URL=https://clownfish-app-dqd9h.ondigitalocean.app
 ```
 
 ### Firestore collections
@@ -582,7 +600,7 @@ CLOUD_RUN_URL=https://ghostops-backend-xxxx-uc.a.run.app
 
 ## Security & Privacy
 
-- **No data leaves your machine** except API calls to DO Gradient AI inference and Firestore
+- **No data leaves your machine** except API calls to DO Gradient AI inference, DO App Platform backend, and Firestore
 - Screenshots are captured in-memory and sent directly to the model -- never written to disk
 - `.env` is gitignored -- API keys are never committed
 - The overlay window is `focusable: false` by default -- it doesn't steal keyboard focus until summoned
